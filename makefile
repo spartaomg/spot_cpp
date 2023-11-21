@@ -1,4 +1,4 @@
-
+ 
 #---------------------------------------------------
 # This makefile requires GNU make, mkdir, and g++.
 # On Windows please use MinGW.
@@ -35,8 +35,8 @@ ifeq ($(OS),Windows_NT)
 	OBJ += $(DIR_OBJ)/spot.res
 endif
 
-# "mkdir" (with quotes) will force Windows to search for the executable (GNU) mkdir instead of the CMD command. Just make sure that its folder is in the system PATH.
-# It also works on Linux and macOS.
+# "mkdir" (with quotes) will force Windows to search for the executable (GNU) mkdir instead of the CMD command.
+# Just make sure that its folder is in the system PATH. It also works on Linux and macOS.
 
 create_dir = @"mkdir" -p $(@D)
 

@@ -6,7 +6,7 @@ string InFile{};
 string FPath{}, FName{}, FExt{}, SpotFolder{}, SavePath{}, SaveName{}, SaveExt{}, CmdIn{}, OutFile{};
 
 string CmdOptions = "k";                    //Default output file type = kla
-string CmdColors = "0123456789abcdef";
+string CmdColors = "0123456789abcdef";      //Default output background color: all possible colors
 
 bool C64Formats = false;
 
@@ -764,7 +764,13 @@ bool OptimizeByColor()
         }
     }
 
-    string sBGCol = ConvertIntToHextString((int)BGCol, 2);
+    string SaveFile = SavePath + SaveName; 
+    if ((NumBGCols > 1) && (CmdColors.size() != 1))
+    {
+        //If we have more than 1 possible background color AND the user requested more than one background color
+        //Then mark the output file name with _0x
+        SaveFile += "_"+ ConvertIntToHextString((int)BGCol, 2);
+    }
 
     if ((OutputKla) && (CharRow >= 25) && (CharCol >= 40))
     {
@@ -795,26 +801,24 @@ bool OptimizeByColor()
             }
         }
         //Save KLA
-        string S = SavePath + "/" + SaveName + "_" + sBGCol + ".kla";
-
-        WriteBinaryFile(S, KLA);
+        WriteBinaryFile(SaveFile + ".kla", KLA);
     }
 
     //Save bitmap, color RAM, and screen RAM
 
     if (OutputMap)
     {
-        WriteBinaryFile(SavePath + "/" + SaveName + "_" + sBGCol + ".map", BMP, CharCol*PicH);
+        WriteBinaryFile(SaveFile + ".map", BMP, CharCol*PicH);
     }
 
     if (OutputCol)
     {
-        WriteBinaryFile(SavePath + "/" + SaveName + "_" + sBGCol + ".col", ColRAM, ColTabSize);
+        WriteBinaryFile(SaveFile + ".col", ColRAM, ColTabSize);
     }
 
     if (OutputScr)
     {
-        WriteBinaryFile(SavePath + "/" + SaveName + "_" + sBGCol + ".scr", ScrRAM, ColTabSize);
+        WriteBinaryFile(SaveFile + ".scr", ScrRAM, ColTabSize);
     }
 
     unsigned char* CCR{};
@@ -829,7 +833,7 @@ bool OptimizeByColor()
 
     if (OutputCcr)
     {
-        WriteBinaryFile(SavePath + "/" + SaveName + "_" + sBGCol + ".ccr", CCR, ColTabSize/2);
+        WriteBinaryFile(SaveFile + ".ccr", CCR, ColTabSize/2);
     }
 
     //Save Optimized Bitmap file format only if bitmap is at least 320x200 pixels
@@ -879,7 +883,7 @@ bool OptimizeByColor()
         }
         
         //Save optimized bitmap file format
-        WriteBinaryFile(SavePath + "/" + SaveName + "_" + sBGCol + ".obm", OBM);
+        WriteBinaryFile(SaveFile + ".obm", OBM);
     }
 
     delete[] ColRAM;
@@ -904,7 +908,7 @@ bool OptimizeImage()
     {
         if ((PicW % 4 != 0) || (PicH % 8 != 0))
         {
-            cerr << "Unable to convert image to C64 formats. The dimensions of the image must be multiples of 8.\n";
+            cerr << "***CRITICAL***\tUnable to convert image to C64 formats. The dimensions of the image must be multiples of 8.\n";
             return false;       //This return is OK, we are before creating dynamic arrays
         }
     }
@@ -987,7 +991,7 @@ bool OptimizeImage()
                     }
                     else
                     {
-                        cerr << "This picture cannot be converted as it contains more than 4 colors per char block!\n";
+                        cerr << "***CRITICAL***\tThis picture cannot be converted as it contains more than 4 colors per char block!\n";
                         ReturnStatus = false;
                     }
                 }
@@ -1023,8 +1027,34 @@ bool OptimizeImage()
 
         if (NumBGCols == 0)
         {
-            cerr << "This picture cannot be converted as none of the C64 colors can be used as a background color!\n";
+            cerr << "***CRITICAL***\tThis picture cannot be converted as none of the C64 colors can be used as a background color!\n";
             ReturnStatus = false;
+        }
+        
+        if ((NumBGCols > 1) && (CmdColors.size() != 1))
+        {
+            cout << "***INFO***\tMore than one possible background color has been identified.\n";
+            cout << "***INFO***\tThe background color will be appened to the output file names.\n";
+            cout << "***INFO***\tIf you only want one output background color then please specify it in the command-line.\n";
+        }
+
+        bool ColFound = false;
+        if (NumBGCols > 0)
+        {
+            for (int i = 0; i < NumBGCols; i++)
+            {
+                string BGC = ConvertIntToHextString((int)BGCols[i], 1);
+                if (CmdColors.find(BGC) != string::npos)
+                {
+                    ColFound = true;
+                }
+            }
+
+            if (!ColFound)
+            {
+                cerr << "***CRITICAL***This picture cannot be converted as the requested color(s) cannot be used as a background color!\n";
+                ReturnStatus = false;
+            }
         }
 
         if (ReturnStatus)
@@ -1045,7 +1075,7 @@ bool OptimizeImage()
                     cCol = 'a' + (BGCol - 10);
                 }
 
-                //If tool is run from command line, check if the current background color is on the list
+                //Check if the current background color is on the list
                 if (CmdColors.find(cCol) != string::npos)
                 {
                     for (int I = 0; I < ColTabSize; I++)
@@ -1107,15 +1137,16 @@ bool ConvertPicToC64Palette()
     {
         if ((CharCol < 40) || (CharRow < 25))
         {
-            cout << "This image cannot be saved as Koala (KLA) or Optimized Bitmap (OBM) as it is smaller than 320x200 pixels!\n";
-            cout << "All other selected output format will be created.\n";
+            cout << "***INFO***\tThis image cannot be saved as Koala (KLA) or Optimized Bitmap (OBM) as it is smaller than 320x200 pixels!\n";
+            cout << "***INFO***\tAll other selected output format will be created.\n";
         }
     }
 
     unsigned char R{}, G{}, B{};
     color PicCol{};
     int dR{}, dG{}, dB{}, uR{};
-    int BestMatch{}, BestMatchIndex{};
+    int BestMatchIndex{};
+    double BestMatch{};
     int BestPaletteIndex{};
 
     int* BestPalette;
@@ -1357,6 +1388,26 @@ bool DecodeBmp()
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
+bool IsMCImage()
+{
+    for (size_t Y = 0; Y < PicH; Y++)
+    {
+        for (size_t X = 0; X < PicW; X++)
+        {
+            color Col1 = GetPixel(Image, X * 2, Y);
+            color Col2 = GetPixel(Image, (X * 2) + 1, Y);
+            if ((Col1.R != Col2.R) || (Col1.G != Col2.G) || (Col1.B != Col2.B))
+            {
+                cerr << "***CRITICAL***SPOT only accepts multicolor (double-pixel) pictures as input. This image file cannot be converted!\n";
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
 bool ImportFromImage()
 {
     if (ReadBinaryFile(InFile, ImgRaw) == -1)
@@ -1377,7 +1428,7 @@ bool ImportFromImage()
         
         if (error)
         {
-            cout << "***CRITICAL***\tPNG decoder error: " << error << ": " << lodepng_error_text(error) << "\n";
+            cerr << "***CRITICAL***\tPNG decoder error: " << error << ": " << lodepng_error_text(error) << "\n";
             return false;
         }
         PicW /= 2;  //Double pixels, effective width is half of PNG width
@@ -1391,6 +1442,11 @@ bool ImportFromImage()
         }
     }
     
+
+    //Make sure this is a MC (double pixel) picture
+    if (!IsMCImage())
+        return false;
+
     //Here we have the image decoded in the Image vector of unsigned chars, 4 bytes representing a pixel in RGBA format
     //Next we will find the best palette match
 
@@ -1401,6 +1457,19 @@ bool ImportFromImage()
 
 bool ImportFromKoala()
 {
+    PrgLen = ReadBinaryFile(InFile, ImgRaw);
+
+    if (PrgLen == -1)
+    {
+        cerr << "***CRITICAL***\tUnable to open Koala file.\n";
+        return false;
+    }
+    else if (PrgLen != 10003)
+    {
+        cerr << "***CRITICAL***\tInvalid Koala file size. Unable optimize this Koala file\n";
+        return false;
+    }
+
     PicW = 160;         //Double pixels, this is the effective width
     PicH = 200;
     CharCol = PicW / 4;
@@ -1429,7 +1498,7 @@ bool ImportFromKoala()
     Image.resize((size_t)PicW * 2 * PicH * 4);
 
     int CI = 0;         //Color tab index
-    int PxI = 0;         //Pixel index
+    int PxI = 0;        //Pixel index
     unsigned char BitMask = 0;
     unsigned char Bits = 0;
     unsigned char Col = 0;
@@ -1438,7 +1507,7 @@ bool ImportFromKoala()
     {
         for (size_t X = 0; X < PicW; X++)
         {
-            CI = ((Y/ 8) * CharCol) + (X / 4);                     //ColorTab index from X and Y
+            CI = ((Y/ 8) * CharCol) + (X / 4);                      //ColorTab index from X and Y
             PxI = ((X / 4) * 8) + (Y % 8) + ((Y/ 8) * PicW * 2);    //Pixel index in Bitmap
 
             if (X % 4 == 0)
@@ -1503,41 +1572,44 @@ void ShowHelp()
     cout << "*Compressed color RAM (.ccr) format: two adjacent half bytes are combined to reduce the size of the color RAM to\n";
     cout << "500 bytes.\n\n";
     cout << "**Optimized bitmap (.obm) format: bitmap info is stored column wise. Screen RAM and compressed color RAM stored\n";
-    cout << "row wise. First two bytes are address bytes ($00, $60) and the last one is the background color, as per koala format.\n";
+    cout << "row wise. First two bytes are address bytes ($00, $60) and the last one is the background color as in the Koala format.\n";
     cout << "File size: 9503 bytes. In most cases, this format compresses somewhat better than koala but it also needs a more\n";
     cout << "complex display routine.\n\n";
     cout << "Usage\n";
     cout << "-----\n\n";
     cout << "spot input [output] [format] [bgcolor]\n\n";
-    cout << "input:     An input image file to be optimized/converted. Only .png, .bmp, and .kla file types are accepted.\n";
-    cout << "output:    The output folder and file name, file extension is ignored.\n";
-    cout << "format:    Output file formats. Select as many as you want in any order:\n";
-    cout << "           k - .kla\n";
-    cout << "           m - .map\n";
-    cout << "           s - .scr\n";
-    cout << "           c - .col\n";
-    cout << "           2 - .ccr\n";
-    cout << "           o - .obm\n";
-    cout << "bgcolor:   Output background color(s): 0123456789abcdef. SPOT will only create C64 files using the selected\n";
-    cout << "           background color(s).\n\n";
+    cout << "input:   An input image file to be optimized/converted. Only .png, .bmp, and .kla file types are accepted.\n\n";
+    cout << "output:  The output folder and file name. File extension (if exists) will be ignored. If omitted, SPOT will create\n";
+    cout << "         a <spot/input> folder and the input file's name will be used as output file name.\n\n";
+    cout << "format:  Output file formats. Select as many as you want in any order:\n";
+    cout << "         k - .kla (Koala - 10003 bytes)\n";
+    cout << "         m - .map (bitmap data)\n";
+    cout << "         s - .scr (screen RAM data)\n";
+    cout << "         c - .col (color RAM data)\n";
+    cout << "         2 - .ccr (compressed color RAM data)\n";
+    cout << "         o - .obm (optimized bitmap - 9503 bytes)\n";
+    cout << "         If omitted, then the default Koala file will be created.\n\n";
+    cout << "bgcolor: Output background color(s): 0123456789abcdef. SPOT will only create C64 files using the selected\n";
+    cout << "         background color(s). If omitted, SPOT will generate output files using all possible background colors.\n";
+    cout << "         If more than one background color is possible (and allowed) then SPOT will append the background color\n";
+    cout << "         to the output file name.\n\n";
     cout << "The last three arguments can be omitted, but each one is dependent on the one on its left. In other words, the\n";
-    cout << "second argument is always interpreted as [output]. Thus, if one omits the [output] argument, then the [format] and\n";
-    cout << "[bgcolor] arguments must be omitted too. If [bgcolor] is omitted only, then SPOT will generate output files using\n";
-    cout << "all possible background colors. If [format] is omitted too, then a .kla will be created. If [output] is also omitted,\n";
-    cout << "SPOT will use the spot/filename folder and the input file's name.\n\n";
+    cout << "second argument is always interpreted as [output]. Therefore, if one omits the [output] argument, then the [format]\n";
+    cout << "and [bgcolor] arguments must be omitted too.\n\n";
     cout << "Examples\n";
     cout << "--------\n\n";
-    cout << "spot test.bmp msc testout/testconv 0\n";
-    cout << "converts test.bmp to .map, .scr, and .col formats using black as background color and saves them to the testout\n";
-    cout << "folder using testconv as base filename.\n\n";
-    cout << "spot test.png msc testout/testconv\n";
-    cout << "converts test.png to .kla, .map, .scr, and .col formats and saves them to the testout folder using testconv as base\n";
-    cout << "filename.\n\n";
-    cout << "spot test.png m\n";
-    cout << "converts test.png to .map format and saves the output to the SPOT/test folder using test as base filename.\n\n";
-    cout << "spot test.png\n";
-    cout << "converts test.png to the default .kla using all possible background colors and saves the output to the SPOT/test\n";
-    cout << "folder using test as base filename\n\n";
+    cout << "spot picture.bmp newfolder/newfile msc 0\n";
+    cout << "SPOT will convert <picture.bmp> to .map, .scr, and .col formats with black as background color and will save them to\n";
+    cout << "the <newfolder> folder using <newfile> as output base filename.\n\n";
+    cout << "spot picture.png newfolder/newfile msc\n";
+    cout << "SPOT will convert <picture.png> to .map, .scr, and .col formats with all possible background colors and will save them\n";
+    cout << "to the <newfolder> folder using <newfile> as output base filename.\n\n";
+    cout << "spot picture.png newfolder/newfile\n";
+    cout << "SPOT will convert <picture.png> to the default Koala format with all possible background colors and will save the\n";
+    cout << "output to the <newfolder> folder using <newfile> as output base filename.\n\n";
+    cout << "spot picture.png\n";
+    cout << "SPOT will convert <picture.png> to the default Koala format with all possible background colors and will save the\n";
+    cout << "output to the <spot/picture> folder using <picture> as output base filename\n\n";
     cout << "Notes\n";
     cout << "-----\n\n";
     cout << "SPOT recognizes several C64 palettes. If a palette match is not found then it attempts to convert colors to\n";
@@ -1560,14 +1632,18 @@ int main(int argc, char* argv[])
 
     if (argc == 1)
     {
-        cout << "Usage: spot input [output] [kmsco2] [0123456789abcdef]\n";
+        cout << "Usage: spot input [output] [kmsc2o] [0123456789abcdef]\n";
         cout << "\n";
         cout << "Help:  spot -?\n";
         cout << "\n";
 
         return EXIT_SUCCESS;
+        //InFile = "bin\\windows\\d.png";
+        //OutFile = "bin\\windows\\d\\d";
+        //CmdColors = "0";
     }
     
+    //Input
     if (argc > 1)
     {
         InFile = argv[1];
@@ -1578,29 +1654,22 @@ int main(int argc, char* argv[])
             return EXIT_SUCCESS;
         }
     }
-
-    for (size_t i = 0; i < InFile.size(); i++)
-    {
-        if (InFile[i] == '\\')
-        {
-            InFile.replace(i, 1, "/");
-            OutFile = InFile;
-        }
-    }
-
-    if (argc > 3)
+    //Output
+    if (argc > 2)
     {
         OutFile = argv[2];
     }
 
-    if (argc > 4)
+    //Format
+    if (argc > 3)
     {
         CmdOptions = argv[3];
     }
 
-    if (CmdOptions == "")
+    //BGColor
+    if (argc > 4)
     {
-        CmdOptions = "k";
+        CmdColors = argv[4];
     }
 
     for (size_t i = 0; i < CmdOptions.size(); i++)
@@ -1617,139 +1686,100 @@ int main(int argc, char* argv[])
     OutputPng = (CmdOptions.find('p') != string::npos);
     OutputBmp = (CmdOptions.find('b') != string::npos);
 
-    if (argc > 5)
-    {
-        CmdColors = argv[3];
-    }
-
     for (size_t i = 0; i < CmdColors.size(); i++)
     {
         CmdColors[i] = tolower(CmdColors[i]);
     }
 
-    size_t i = InFile.size() - 1;
-    size_t j = InFile.size() - 1;
-
-    while (i >= 0)
+    //Replace "\" file path separator in InFile with "/", Windows can also handle it
+    while (InFile.find('\\') != string::npos)
     {
-        if (InFile[i] == '/')
-        {
-            break;                                      //No extension
-        }
-        if (InFile[i--] == '.')
-        {
-            for (size_t k = i + 2; k < InFile.size(); k++)
-            {
-                FExt += tolower(InFile[k]);
-            }
-            j = i;
-            break;
-        }
+        InFile.replace(InFile.find('\\'), 1, "/");
     }
 
+    //Same for OutFile
+    while (OutFile.find('\\') != string::npos)
+    {
+        OutFile.replace(OutFile.find('\\'), 1, "/");
+    }
+
+    //Find input file path, name, and extension
+    if (InFile.find_last_of("/.") != string::npos)
+    {
+        if (InFile.substr(InFile.find_last_of("/."), 1) == ".")
+        {
+            FExt = InFile.substr(InFile.find_last_of(".") + 1);
+            if (InFile.find_last_of("/") != string::npos)
+            {
+                FName = InFile.substr(InFile.find_last_of("/") + 1, InFile.find_last_of(".") - InFile.find_last_of("/") - 1);
+                FPath = InFile.substr(0, InFile.find_last_of("/") + 1);
+            }
+            else
+            {
+                FName = InFile.substr(0, InFile.find_last_of("."));
+                FPath = "";
+            }
+        }
+    }
+    
+    //Make input file extension lower case
+    for (size_t i = 0; i < FExt.size(); i++)
+    {
+        FExt[i] = tolower(FExt[i]);
+    }
+
+    //Check we have the right input file type
     if ((FExt != "png") && (FExt != "bmp") && (FExt != "kla") && (FExt != "koa"))
     {
-        cerr << "SPOT only accepts PNG, BMP and koala (KLA, KOA) input file types!\n";
+        cerr << "***CRITICAL***\tSPOT only accepts PNG, BMP and Koala (KLA, KOA) input file types!\n";
         return EXIT_FAILURE;
     }
 
-    while (j >= 0)
-    {
-        if (InFile[j] != '/')
-        {
-            FName = InFile[j] + FName;
-            if (j == 0)
-            {
-                break;
-            }
-            else
-            {
-                j--;
-
-            }
-        }
-        else
-        {
-            break;
-        }
-    }
-        
-    FPath = InFile.substr(0, j);
-        if (FPath != "")
-        {
-            FPath += "/";
-        }
-    SpotFolder = FPath + "spot";
-
+    //Find output file path, name and extension (extension will be omitted)
     if (OutFile != "")
     {
-        i = OutFile.size() - 1;
-        j = OutFile.size() - 1;
-
-        while (i >= 0)
+        if (OutFile.find_last_of("/.") != string::npos)
         {
-            if (OutFile[i] == '/')
+            if (OutFile.substr(OutFile.find_last_of("/."), 1) == ".")
             {
-                break;                                      //No extension
-            }
-            if (OutFile[i--] == '.')
-            {
-                for (size_t k = i + 2; k < OutFile.size(); k++)
+                SaveExt = OutFile.substr(OutFile.find_last_of(".") + 1);
+                if (OutFile.find_last_of("/") != string::npos)
                 {
-                    SaveExt += tolower(OutFile[k]);
-                }
-                j = i;
-                break;
-            }
-        }
-
-        while (j >= 0)
-        {
-            if (OutFile[j] != '/')
-            {
-                SaveName = OutFile[j] + SaveName;
-                if (j == 0)
-                {
-                    break;
+                    SaveName = OutFile.substr(OutFile.find_last_of("/") + 1, OutFile.find_last_of(".") - OutFile.find_last_of("/") - 1);
+                    SavePath = OutFile.substr(0, OutFile.find_last_of("/") + 1);
                 }
                 else
                 {
-                    j--;
+                    SaveName = OutFile.substr(0, OutFile.find_last_of("."));
+                    SavePath = "";
                 }
             }
             else
             {
-                break;
+                SaveExt = "";
+                if (OutFile.find_last_of("/") != string::npos)
+                {
+                    SaveName = OutFile.substr(OutFile.find_last_of("/") + 1);
+                    SavePath = OutFile.substr(0, OutFile.find_last_of("/") + 1);
+                }
+                else
+                {
+                    SaveName = OutFile;
+                    SavePath = "";
+                }
             }
-        }
-
-        SavePath = OutFile.substr(0, j);
-        if (SavePath != "")
-        {
-            SavePath += "/";
         }
     }
     else
     {
-        SavePath = SpotFolder + "/" + FName;
+        SavePath = FPath + "spot/" + FName + "/";
         SaveName = FName;
     }
 
+    //cout << InFile << "\t" << OutFile << "\t" << CmdOptions << "\t" << CmdColors << "\n";
+
     if ((FExt == "kla") || (FExt == "koa"))
     {
-        PrgLen = ReadBinaryFile(InFile, ImgRaw);
-
-        if (PrgLen == -1)
-        {
-            cout << "Unable to open binary\n";
-            return EXIT_FAILURE;
-        }
-        else if (PrgLen != 10003)
-        {
-            cerr << "Invalid Koala file size. Unable optimize this Koala file\n";
-            return EXIT_FAILURE;
-        }
-        
         if (!ImportFromKoala())
             return EXIT_FAILURE;
     }
@@ -1757,11 +1787,6 @@ int main(int argc, char* argv[])
     {
         if (!ImportFromImage())
             return EXIT_FAILURE;
-    }
-    else
-    {
-        cerr << "SPOT only accepts PNG, BMP, and KLA/KOA file types for input\n";
-        return EXIT_FAILURE;
     }
 
     cout << "Done!\n";
