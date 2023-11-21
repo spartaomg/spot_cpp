@@ -153,7 +153,7 @@ bool WriteBinaryFile(const string& FileName, unsigned char*& Binary, int FileSiz
             }
         }
 #elif __APPLE__ || __linux__
-        if ((DiskName[i] == '/') && (DiskDir.size() > 0) && (DiskDir != "~"))   //Don't try to create root directory and home directory
+        if ((FileName[i] == '/') && (DiskDir.size() > 0) && (DiskDir != "~"))   //Don't try to create root directory and home directory
         {
             if (!CreateDirectory(DiskDir))
                 return false;
@@ -196,7 +196,7 @@ bool WriteBinaryFile(const string& FileName, vector <unsigned char>& Binary)
             }
         }
 #elif __APPLE__ || __linux__
-        if ((DiskName[i] == '/') && (DiskDir.size() > 0) && (DiskDir != "~"))   //Don't try to create root directory and home directory
+        if ((FileName[i] == '/') && (DiskDir.size() > 0) && (DiskDir != "~"))   //Don't try to create root directory and home directory
         {
             if (!CreateDirectory(DiskDir))
                 return false;
