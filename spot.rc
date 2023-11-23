@@ -61,8 +61,8 @@ IDI_ICON1               ICON                    "SPOT.ico"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,2,23,1120
- PRODUCTVERSION 1,2,23,1120
+ FILEVERSION 1,2,23,1123
+ PRODUCTVERSION 1,2,23,1123
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -79,12 +79,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Sparta / Genesis Project"
             VALUE "FileDescription", "SPOT - Sparta's Picture Optimizing Tool for the Commodore 64"
-            VALUE "FileVersion", "1.2.23.1120"
+            VALUE "FileVersion", "1.2.23.1123"
             VALUE "InternalName", "SPOT"
             VALUE "LegalCopyright", "Copyright (C) Sparta 2021-2023"
             VALUE "OriginalFilename", "SPOT"
             VALUE "ProductName", "SPOT - Sparta's Picture Optimizing Tool for the Commodore 64"
-            VALUE "ProductVersion", "1.2.23.1120"
+            VALUE "ProductVersion", "1.2.23.1123"
         END
     END
     BLOCK "VarFileInfo"

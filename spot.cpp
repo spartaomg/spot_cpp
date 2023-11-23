@@ -2,8 +2,8 @@
 #include "common.h"
 
 int PrgLen = 0;
-string InFile{};
-string FPath{}, FName{}, FExt{}, SpotFolder{}, SavePath{}, SaveName{}, SaveExt{}, CmdIn{}, OutFile{};
+string InFile{}, OutFile{};
+string FPath{}, FName{}, FExt{};
 
 string CmdOptions = "k";                    //Default output file type = kla
 string CmdColors = "0123456789abcdef";      //Default output background color: all possible colors
@@ -27,10 +27,10 @@ bool OutputPng = false;
 bool OutputBmp = false;
 
 int NumBGCols = -1;
-unsigned char BGCol, BGCols[16]{};   //Background color
+unsigned char BGCol, BGCols[16]{};  //Background color
 unsigned char UnusedColor = 0x10;
 
-vector <unsigned char> ImgRaw;      //raw PNG/KLA/BMP
+vector <unsigned char> ImgRaw;      //raw PNG/BMP/Koala
 vector <unsigned char> Image;       //pixels in RGBA format (4 bytes per pixel)
 vector <unsigned char> C64Bitmap;
 
@@ -90,6 +90,10 @@ string ConvertIntToHextString(const int& i, const int& hexlen)
 
 int ReadBinaryFile(const string& FileName, vector<unsigned char>& prg)
 {
+    if (FileName == "")
+    {
+        return -1;
+    }
 
     if (!fs::exists(FileName))
     {
@@ -120,6 +124,9 @@ int ReadBinaryFile(const string& FileName, vector<unsigned char>& prg)
 
 bool CreateDirectory(const string& DiskDir)
 {
+    if (DiskDir == "")
+        return true;
+
     if (!fs::exists(DiskDir))
     {
         cout << "Creating folder: " << DiskDir << "\n";
@@ -138,6 +145,10 @@ bool CreateDirectory(const string& DiskDir)
 
 bool WriteBinaryFile(const string& FileName, unsigned char*& Binary, int FileSize)
 {
+    if (FileName == "")
+    {
+        return false;
+    }
 
     string DiskDir{};
 
@@ -181,6 +192,10 @@ bool WriteBinaryFile(const string& FileName, unsigned char*& Binary, int FileSiz
 
 bool WriteBinaryFile(const string& FileName, vector <unsigned char>& Binary)
 {
+    if (FileName == "")
+    {
+        return false;
+    }
 
     string DiskDir{};
 
@@ -458,7 +473,7 @@ bool OptimizeByColor()
                     }
                     else
                     {
-                        if (ColRAM[I] == 255)                                    //OverlapSL is second smallest
+                        if (ColRAM[I] == 255)                                   //OverlapSL is second smallest
                         {
                             ColRAM[I] = MUC[J];
                         }
@@ -709,8 +724,6 @@ bool OptimizeByColor()
     //----------------------------------------------------------------------------
 
     unsigned char Col1{}, Col2{}, Col3{};
-    int CP{};               //Char Position within array
-    unsigned char V{};      //One byte to work with...
 
     //Replace C64 colors with respective bit pairs
     for (int CY = 0; CY < CharRow; CY++)
@@ -726,7 +739,7 @@ bool OptimizeByColor()
                 for (int BX = 0; BX < 4; BX++)
                 {
                     //Calculate pixel position in array
-                    CP = (CY * PicW * 8) + (CX * 4) + (BY * PicW) + BX;
+                    int CP = (CY * PicW * 8) + (CX * 4) + (BY * PicW) + BX;
                     if (Pic[CP] == BGCol)
                     {
                         PicMsk[CP] = 0;
@@ -755,8 +768,8 @@ bool OptimizeByColor()
         {
             for (int BY = 0; BY < 8; BY++)
             {
-                CP = (CY * PicW * 8) + (CX * 4) + (BY * PicW);
-                V = (PicMsk[CP] * 64) + (PicMsk[CP + 1] * 16) + (PicMsk[CP + 2] * 4) + PicMsk[CP + 3];
+                int CP = (CY * PicW * 8) + (CX * 4) + (BY * PicW);
+                unsigned char V = (PicMsk[CP] * 64) + (PicMsk[CP + 1] * 16) + (PicMsk[CP + 2] * 4) + PicMsk[CP + 3];
                 CP = (CY * CharCol * 8) + (CX * 8) + BY;
                 BMP[CP] = V;
 
@@ -764,7 +777,7 @@ bool OptimizeByColor()
         }
     }
 
-    string SaveFile = SavePath + SaveName; 
+    string SaveFile = OutFile;
     if ((NumBGCols > 1) && (CmdColors.size() != 1))
     {
         //If we have more than 1 possible background color AND the user requested more than one background color
@@ -836,7 +849,7 @@ bool OptimizeByColor()
         WriteBinaryFile(SaveFile + ".ccr", CCR, ColTabSize/2);
     }
 
-    //Save Optimized Bitmap file format only if bitmap is at least 320x200 pixels
+    //Save optimized bitmap file format only if bitmap is at least 320x200 pixels
     //Bitmap is stored column wise, color spaces are stored row wise, color RAM is compressed
 
     if ((OutputObm) && (CharRow >= 25) && (CharCol >= 40))
@@ -954,7 +967,7 @@ bool OptimizeImage()
     {
         for (int CX = 0; CX < CharCol; CX++)            //Chars per row
         {
-            int CP = (CY * 8 * PicW) + (CX * 4);        //Char's position within R array(160 * 1600) = Y * 160 * 8 + X * 4
+            int CP = (CY * 8 * PicW) + (CX * 4);        //Char's position within R array
 
             for (int BY = 0; BY < 8; BY++)              //Pixel's Y-position within char
             {
@@ -971,7 +984,7 @@ bool OptimizeImage()
                     }
                     else if (CT1[CharIndex] == UnusedColor)
                     {
-                        //If color is not in Color Tabs yet, first fill Color Tab   
+                        //If color is not in Color Tabs yet, first fill Color Tab 1
                         CT1[CharIndex] = V;
                     }
                     else if (CT2[CharIndex] == UnusedColor)
@@ -1001,10 +1014,14 @@ bool OptimizeImage()
 
     if (ReturnStatus)
     {
+        //Find possible background colors
+
         NumBGCols = 0;
 
         for (int C = 0; C < 16; C++)
         {
+            //Try all 16 colors as backgroud color
+
             bool ColOK = true;
             for (int I = 0; I < ColTabSize; I++)
             {
@@ -1015,6 +1032,8 @@ bool OptimizeImage()
                 if ((CT3[I] != C) && (CT3[I] != UnusedColor)) ColCnt++;
                 if (ColCnt == 4)
                 {
+                    //We can only have 3 non-background colors per char. If we find 4 than the current color cannot be used as a background color
+
                     ColOK = false;
                     break;
                 }
@@ -1034,8 +1053,8 @@ bool OptimizeImage()
         if ((NumBGCols > 1) && (CmdColors.size() != 1))
         {
             cout << "***INFO***\tMore than one possible background color has been identified.\n";
-            cout << "***INFO***\tThe background color will be appened to the output file names.\n";
-            cout << "***INFO***\tIf you only want one output background color then please specify it in the command-line.\n";
+            cout << "\t\tThe background color will be appened to the output file names.\n";
+            cout << "\t\tIf you only want one output background color then please specify it in the command-line.\n";
         }
 
         bool ColFound = false;
@@ -1076,6 +1095,7 @@ bool OptimizeImage()
                 }
 
                 //Check if the current background color is on the list
+
                 if (CmdColors.find(cCol) != string::npos)
                 {
                     for (int I = 0; I < ColTabSize; I++)
@@ -1104,7 +1124,6 @@ bool OptimizeImage()
 
                     //ColTab0 can only contain UnusedColor and BGCol here!!! - we won't need to use it in OptimizeByColor()
 
-                    //OptimizeByColorSequence()
                     OptimizeByColor();
                 }
             }
@@ -1137,8 +1156,8 @@ bool ConvertPicToC64Palette()
     {
         if ((CharCol < 40) || (CharRow < 25))
         {
-            cout << "***INFO***\tThis image cannot be saved as Koala (KLA) or Optimized Bitmap (OBM) as it is smaller than 320x200 pixels!\n";
-            cout << "***INFO***\tAll other selected output format will be created.\n";
+            cout << "***INFO***\tThis image cannot be saved as Koala (.kla) or optimized bitmap (.obm) as it is smaller than 320x200 pixels!\n";
+            cout << "\t\tAll other selected output format will be created.\n";
         }
     }
 
@@ -1567,13 +1586,13 @@ bool ImportFromKoala()
 void ShowHelp()
 {
     cout << "SPOT is a small cross-platform command-line tool that converts .png, .bmp, and .kla images into C64 file formats\n";
-    cout << "optimized for better compression. The following output file formats can be selected: koala (.kla), bitmap (.map),\n";
+    cout << "optimized for better compression. The following output file formats can be selected: Koala (.kla), bitmap (.map),\n";
     cout << "screen RAM (.scr), color RAM (.col), compressed color RAM (.ccr)*, and optimized bitmap (.obm)**.\n\n";
     cout << "*Compressed color RAM (.ccr) format: two adjacent half bytes are combined to reduce the size of the color RAM to\n";
     cout << "500 bytes.\n\n";
     cout << "**Optimized bitmap (.obm) format: bitmap info is stored column wise. Screen RAM and compressed color RAM stored\n";
     cout << "row wise. First two bytes are address bytes ($00, $60) and the last one is the background color as in the Koala format.\n";
-    cout << "File size: 9503 bytes. In most cases, this format compresses somewhat better than koala but it also needs a more\n";
+    cout << "File size: 9503 bytes. In most cases, this format compresses somewhat better than Koala but it also needs a more\n";
     cout << "complex display routine.\n\n";
     cout << "Usage\n";
     cout << "-----\n\n";
@@ -1731,7 +1750,7 @@ int main(int argc, char* argv[])
     //Check we have the right input file type
     if ((FExt != "png") && (FExt != "bmp") && (FExt != "kla") && (FExt != "koa"))
     {
-        cerr << "***CRITICAL***\tSPOT only accepts PNG, BMP and Koala (KLA, KOA) input file types!\n";
+        cerr << "***CRITICAL***\tSPOT only accepts PNG, BMP and Koala (.kla, .koa) input file types!\n";
         return EXIT_FAILURE;
     }
 
@@ -1742,41 +1761,23 @@ int main(int argc, char* argv[])
         {
             if (OutFile.substr(OutFile.find_last_of("/."), 1) == ".")
             {
-                SaveExt = OutFile.substr(OutFile.find_last_of(".") + 1);
-                if (OutFile.find_last_of("/") != string::npos)
-                {
-                    SaveName = OutFile.substr(OutFile.find_last_of("/") + 1, OutFile.find_last_of(".") - OutFile.find_last_of("/") - 1);
-                    SavePath = OutFile.substr(0, OutFile.find_last_of("/") + 1);
-                }
-                else
-                {
-                    SaveName = OutFile.substr(0, OutFile.find_last_of("."));
-                    SavePath = "";
-                }
+                OutFile = OutFile.substr(0, OutFile.find_last_of("."));     //Trim outfile extension
             }
             else
             {
-                SaveExt = "";
-                if (OutFile.find_last_of("/") != string::npos)
+                if (OutFile[OutFile.size() - 1] == '/')
                 {
-                    SaveName = OutFile.substr(OutFile.find_last_of("/") + 1);
-                    SavePath = OutFile.substr(0, OutFile.find_last_of("/") + 1);
-                }
-                else
-                {
-                    SaveName = OutFile;
-                    SavePath = "";
+                    cout << "***INFO***\tOutput file name is missing from the output parameter.\n";
+                    cout << "\t\tSPOT will use the intput file's name as output file name.\n";
+                    OutFile += FName;
                 }
             }
         }
     }
     else
     {
-        SavePath = FPath + "spot/" + FName + "/";
-        SaveName = FName;
+        OutFile = FPath + "spot/" + FName + "/" + FName;
     }
-
-    //cout << InFile << "\t" << OutFile << "\t" << CmdOptions << "\t" << CmdColors << "\n";
 
     if ((FExt == "kla") || (FExt == "koa"))
     {
