@@ -1344,6 +1344,9 @@ bool DecodeBmp()
     if (ImgRaw.size() != CalcSize)
     {
         cerr << "***CRITICAL***\tCorrupted BMP file size.\n";
+
+        delete[] BmpInfo;
+
         return false;
     }
 
@@ -1401,6 +1404,8 @@ bool DecodeBmp()
 
     PicW = BmpInfo->bmiHeader.biWidth / 2;      //Double pixels, effective width is half of BMP width
     PicH = BmpInfo->bmiHeader.biHeight;
+
+    delete[] BmpInfo;
 
     return true;
 }
@@ -1727,15 +1732,15 @@ int main(int argc, char* argv[])
     {
         if (InFile.substr(InFile.find_last_of("/."), 1) == ".")
         {
-            FExt = InFile.substr(InFile.find_last_of(".") + 1);
-            if (InFile.find_last_of("/") != string::npos)
+            FExt = InFile.substr(InFile.find_last_of('.') + 1);
+            if (InFile.find_last_of('/') != string::npos)
             {
-                FName = InFile.substr(InFile.find_last_of("/") + 1, InFile.find_last_of(".") - InFile.find_last_of("/") - 1);
-                FPath = InFile.substr(0, InFile.find_last_of("/") + 1);
+                FName = InFile.substr(InFile.find_last_of('/') + 1, InFile.find_last_of('.') - InFile.find_last_of('/') - 1);
+                FPath = InFile.substr(0, InFile.find_last_of('/') + 1);
             }
             else
             {
-                FName = InFile.substr(0, InFile.find_last_of("."));
+                FName = InFile.substr(0, InFile.find_last_of('.'));
                 FPath = "";
             }
         }
@@ -1761,7 +1766,7 @@ int main(int argc, char* argv[])
         {
             if (OutFile.substr(OutFile.find_last_of("/."), 1) == ".")
             {
-                OutFile = OutFile.substr(0, OutFile.find_last_of("."));     //Trim outfile extension
+                OutFile = OutFile.substr(0, OutFile.find_last_of('.'));     //Trim outfile extension
             }
             else
             {
