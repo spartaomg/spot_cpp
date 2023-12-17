@@ -1780,7 +1780,7 @@ int main(int argc, char* argv[])
     }
 
     //Find output file path, name and extension (extension will be omitted)
-    if (OutFile != "")
+    if (!OutFile.empty())
     {
         if (OutFile.find_last_of("/.") != string::npos)
         {
