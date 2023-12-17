@@ -79,7 +79,7 @@ struct color {
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-string ConvertIntToHextString(const int& i, const int& hexlen)
+string ConvertIntToHextString(const int i, const int hexlen)
 {
     std::stringstream hexstream;
     hexstream << setfill('0') << setw(hexlen) << hex << i;
@@ -90,7 +90,7 @@ string ConvertIntToHextString(const int& i, const int& hexlen)
 
 int ReadBinaryFile(const string& FileName, vector<unsigned char>& prg)
 {
-    if (FileName == "")
+    if (FileName.empty())
     {
         return -1;
     }
@@ -117,6 +117,8 @@ int ReadBinaryFile(const string& FileName, vector<unsigned char>& prg)
 
     copy(istreambuf_iterator<char>(infile), istreambuf_iterator<char>(), back_inserter(prg));
 
+    infile.close();
+
     return length;
 }
 
@@ -124,7 +126,7 @@ int ReadBinaryFile(const string& FileName, vector<unsigned char>& prg)
 
 bool CreateDirectory(const string& DiskDir)
 {
-    if (DiskDir == "")
+    if (DiskDir.empty())
         return true;
 
     if (!fs::exists(DiskDir))
@@ -145,7 +147,7 @@ bool CreateDirectory(const string& DiskDir)
 
 bool WriteBinaryFile(const string& FileName, unsigned char*& Binary, int FileSize)
 {
-    if (FileName == "")
+    if (FileName.empty())
     {
         return false;
     }
@@ -179,11 +181,20 @@ bool WriteBinaryFile(const string& FileName, unsigned char*& Binary, int FileSiz
     {
         cout << "Writing " + FileName + "...\n";
         myFile.write((char*)&Binary[0], FileSize);
+
+        if (!myFile.good())
+        {
+            cerr << "***CRITICAL***\tError during writing " << FileName << "\n";
+            myFile.close();
+            return false;
+        }
+
+        myFile.close();
         return true;
     }
     else
     {
-        cerr << "***CRITICAL***\tError during writing " << FileName << "\n\n";
+        cerr << "***CRITICAL***\tError opening file for writing " << FileName << "\n\n";
         return false;
     }
 }
@@ -192,7 +203,7 @@ bool WriteBinaryFile(const string& FileName, unsigned char*& Binary, int FileSiz
 
 bool WriteBinaryFile(const string& FileName, vector <unsigned char>& Binary)
 {
-    if (FileName == "")
+    if (FileName.empty())
     {
         return false;
     }
@@ -225,12 +236,21 @@ bool WriteBinaryFile(const string& FileName, vector <unsigned char>& Binary)
     if (myFile.is_open())
     {
         cout << "Writing " + FileName + "...\n";
-        myFile.write((char*)&Binary[0], Binary.size());
+        myFile.write(reinterpret_cast<const char*>(&Binary[0]), Binary.size());
+        
+        if (!myFile.good())
+        {
+            cerr << "***CRITICAL***\tError during writing " << FileName << "\n";
+            myFile.close();
+            return false;
+        }
+
+        myFile.close();
         return true;
     }
     else
     {
-        cerr << "***CRITICAL***\tError during writing " << FileName << "\n\n";
+        cerr << "***CRITICAL***\tError opening file for writing " << FileName << "\n\n";
         return false;
     }
 }
@@ -1229,7 +1249,7 @@ bool ConvertPicToC64Palette()
                         dR = R - c64palettes[(P * 48) + J];
                         dG = G - c64palettes[(P * 48) + J + 16];
                         dB = B - c64palettes[(P * 48) + J + 32];
-                        double cDiff = (((512 + uR) * dR * dR) >> 8) + (4 * dG * dG) + (((767 - uR) * dB * dB) >> 8);
+                        int cDiff = (((512 + uR) * dR * dR) >> 8) + (4 * dG * dG) + (((767 - uR) * dB * dB) >> 8);
 
                         if (cDiff < BestMatch)
                         {
@@ -1271,7 +1291,7 @@ bool ConvertPicToC64Palette()
                     dR = R - c64palettes[(BestPaletteIndex * 48) + J];
                     dG = G - c64palettes[(BestPaletteIndex * 48) + J + 16];
                     dB = B - c64palettes[(BestPaletteIndex * 48) + J + 32];
-                    double cDiff = (((512 + uR) * dR * dR) >> 8) + (4 * dG * dG) + (((767 - uR) * dB * dB) >> 8);
+                    int cDiff = (((512 + uR) * dR * dR) >> 8) + (4 * dG * dG) + (((767 - uR) * dB * dB) >> 8);
 
                     if (cDiff < BestMatch)
                     {
@@ -1330,7 +1350,7 @@ bool DecodeBmp()
     }
 
     //Calculate data offset
-    size_t DataOffset = (size_t)ImgRaw[DATA_OFFSET] + (size_t)(ImgRaw[DATA_OFFSET + 1] * 0x100) + (size_t)(ImgRaw[DATA_OFFSET + 2] * 0x10000) + (size_t)(ImgRaw[DATA_OFFSET + 3] * 01000000);
+    size_t DataOffset = (size_t)ImgRaw[DATA_OFFSET] + (size_t)(ImgRaw[DATA_OFFSET + 1] * 0x100) + (size_t)(ImgRaw[DATA_OFFSET + 2] * 0x10000) + (size_t)(ImgRaw[DATA_OFFSET + 3] * 0x1000000);
 
     //Calculate length of pixel rows in bytes
     size_t RowLen = ((size_t)BmpInfo->bmiHeader.biWidth * (size_t)BmpInfo->bmiHeader.biBitCount) / 8;
