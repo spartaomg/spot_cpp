@@ -1680,11 +1680,6 @@ int main(int argc, char* argv[])
         cout << "\n";
 
         return EXIT_SUCCESS;
-
-        //InFile = "c:/Users/Tamas/OneDrive/C64/C++/spot/bin/windows/a.png";
-        //OutFile = "c:/Users/Tamas/OneDrive/C64/C++/spot/bin/windows/a/a";
-        //CmdOptions = "msc";
-        //CmdColors = "0";
     }
 
     vector <string> args;
