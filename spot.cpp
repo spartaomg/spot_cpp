@@ -1621,34 +1621,31 @@ void ShowHelp()
     cout << "complex display routine.\n\n";
     cout << "Usage\n";
     cout << "-----\n\n";
-    cout << "spot input [output] [format] [bgcolor]\n\n";
+    cout << "spot input -o [output] -f [format] -b [bgcolor]\n\n";
     cout << "input:   An input image file to be optimized/converted. Only .png, .bmp, and .kla file types are accepted.\n\n";
     cout << "output:  The output folder and file name. File extension (if exists) will be ignored. If omitted, SPOT will create\n";
     cout << "         a <spot/input> folder and the input file's name will be used as output file name.\n\n";
-    cout << "format:  Output file formats. Select as many as you want in any order:\n";
+    cout << "format:  Output file formats: kmsc2o. Select as many as you want in any order:\n";
     cout << "         k - .kla (Koala - 10003 bytes)\n";
     cout << "         m - .map (bitmap data)\n";
     cout << "         s - .scr (screen RAM data)\n";
     cout << "         c - .col (color RAM data)\n";
-    cout << "         2 - .ccr (compressed color RAM data)\n";
-    cout << "         o - .obm (optimized bitmap - 9503 bytes)\n";
-    cout << "         If omitted, then the default Koala file will be created.\n\n";
+    cout << "         2 - .ccr (compressed color RAM data)*\n";
+    cout << "         o - .obm (optimized bitmap - 9503 bytes)**\n";
+    cout << "         This parameter is optional.If omitted, then the default Koala file will be created.\n\n";
     cout << "bgcolor: Output background color(s): 0123456789abcdef. SPOT will only create C64 files using the selected\n";
     cout << "         background color(s). If omitted, SPOT will generate output files using all possible background colors.\n";
     cout << "         If more than one background color is possible (and allowed) then SPOT will append the background color\n";
     cout << "         to the output file name.\n\n";
-    cout << "The last three arguments can be omitted, but each one is dependent on the one on its left. In other words, the\n";
-    cout << "second argument is always interpreted as [output]. Therefore, if one omits the [output] argument, then the [format]\n";
-    cout << "and [bgcolor] arguments must be omitted too.\n\n";
     cout << "Examples\n";
     cout << "--------\n\n";
-    cout << "spot picture.bmp newfolder/newfile msc 0\n";
+    cout << "spot picture.bmp -o newfolder/newfile -f msc -b 0\n";
     cout << "SPOT will convert <picture.bmp> to .map, .scr, and .col formats with black as background color and will save them to\n";
     cout << "the <newfolder> folder using <newfile> as output base filename.\n\n";
-    cout << "spot picture.png newfolder/newfile msc\n";
+    cout << "spot picture.png -o newfolder/newfile -f msc\n";
     cout << "SPOT will convert <picture.png> to .map, .scr, and .col formats with all possible background colors and will save them\n";
     cout << "to the <newfolder> folder using <newfile> as output base filename.\n\n";
-    cout << "spot picture.png newfolder/newfile\n";
+    cout << "spot picture.png -o newfolder/newfile\n";
     cout << "SPOT will convert <picture.png> to the default Koala format with all possible background colors and will save the\n";
     cout << "output to the <newfolder> folder using <newfile> as output base filename.\n\n";
     cout << "spot picture.png\n";
@@ -1656,7 +1653,7 @@ void ShowHelp()
     cout << "output to the <spot/picture> folder using <picture> as output base filename\n\n";
     cout << "Notes\n";
     cout << "-----\n\n";
-    cout << "SPOT recognizes several C64 palettes. If a palette match is not found then it attempts to convert colors to\n";
+    cout << "SPOT recognizes several C64 palettes. If a palette match is not found then it will attempt to convert colors to\n";
     cout << "a standard C64 palette.\n\n";
     cout << "SPOT can handle non-standard image sizes (such as the vertical bitmap in Memento Mori and the diagonal bitmap\n";
     cout << "in Christmas Megademo). When a .kla or .obm file is created from a non-standard sized image, SPOT takes a centered\n";
@@ -1670,50 +1667,90 @@ int main(int argc, char* argv[])
 {
     cout << "\n";
     cout << "*********************************************************************\n";
-    cout << "SPOT 1.2 - Sparta's Picture Optimizing Tool for the C64 (C) 2021-2023\n";
+    cout << "SPOT 1.2 - Sparta's Picture Optimizing Tool for the C64 (C) 2021-2024\n";
     cout << "*********************************************************************\n";
     cout << "\n";
 
     if (argc == 1)
     {
-        cout << "Usage: spot input [output] [kmsc2o] [0123456789abcdef]\n";
+
+        cout << "Usage: spot input -o [output] -f [format] -b [bgcolor]\n";
         cout << "\n";
         cout << "Help:  spot -?\n";
         cout << "\n";
 
         return EXIT_SUCCESS;
-        //InFile = "bin\\windows\\d.png";
-        //OutFile = "bin\\windows\\d\\d";
+
+        //InFile = "c:/Users/Tamas/OneDrive/C64/C++/spot/bin/windows/a.png";
+        //OutFile = "c:/Users/Tamas/OneDrive/C64/C++/spot/bin/windows/a/a";
+        //CmdOptions = "msc";
         //CmdColors = "0";
     }
-    
-    //Input
-    if (argc > 1)
-    {
-        InFile = argv[1];
 
-        if (InFile == "-?")
+    vector <string> args;
+    args.resize(argc);
+
+    for (int c = 0; c < argc; c++)
+    {
+        args[c] = argv[c];
+    }
+
+    int i = 1;
+
+    while (i < argc)
+    {
+        if (i == 1)
         {
-            ShowHelp();
-            return EXIT_SUCCESS;
+            InFile = args[1];
+
+            if (InFile == "-?")
+            {
+                ShowHelp();
+                return EXIT_SUCCESS;
+            }
         }
-    }
-    //Output
-    if (argc > 2)
-    {
-        OutFile = argv[2];
-    }
-
-    //Format
-    if (argc > 3)
-    {
-        CmdOptions = argv[3];
-    }
-
-    //BGColor
-    if (argc > 4)
-    {
-        CmdColors = argv[4];
+        else if ((args[i] == "-o") || (args[i] == "-O"))        //output file base name
+        {
+            if (i + 1 < argc)
+            {
+                OutFile = args[++i];
+            }
+            else
+            {
+                cerr << "***CRITICAL***\tMissing [output] parameter.\n";
+                return EXIT_FAILURE;
+            }
+        }
+        else if ((args[i] == "-f") || (args[i] == "-F"))        //output type(s)
+        {
+            if (i + 1 < argc)
+            {
+                CmdOptions = args[++i];
+            }
+            else
+            {
+                cerr << "***CRITICAL***\tMissing [format] parameter.\n";
+                return EXIT_FAILURE;
+            }
+        }
+        else if ((args[i] == "-b") || (args[i] == "-B"))        //output background color(s)
+        {
+            if (i + 1 < argc)
+            {
+                CmdColors = args[++i];
+            }
+            else
+            {
+                cerr << "***CRITICAL***\tMissing [bgcolor] parameter.\n";
+                return EXIT_FAILURE;
+            }
+        }
+        else
+        {
+            cerr << "***CRITICAL***\tUnrecognized option: " << args[i] << "\n";
+            return EXIT_FAILURE;
+        }
+        i++;
     }
 
     for (size_t i = 0; i < CmdOptions.size(); i++)
