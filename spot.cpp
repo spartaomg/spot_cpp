@@ -1676,7 +1676,7 @@ int main(int argc, char* argv[])
 
         cout << "Usage: spot input -o [output] -f [format] -b [bgcolor]\n";
         cout << "\n";
-        cout << "Help:  spot -?\n";
+        cout << "Help:  spot -h\n";
         cout << "\n";
 
         return EXIT_SUCCESS;
@@ -1703,7 +1703,7 @@ int main(int argc, char* argv[])
         {
             InFile = args[1];
 
-            if (InFile == "-?")
+            if (InFile == "-h")
             {
                 ShowHelp();
                 return EXIT_SUCCESS;
