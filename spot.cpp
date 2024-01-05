@@ -1026,9 +1026,22 @@ bool OptimizeImage()
                     {
                         cerr << "***CRITICAL***\tThis picture cannot be converted as it contains more than 4 colors per char block!\n";
                         ReturnStatus = false;
+                        break;
                     }
                 }
+                if (!ReturnStatus)
+                {
+                    break;
+                }
             }
+            if (!ReturnStatus)
+            {
+                break;
+            }
+        }
+        if (!ReturnStatus)
+        {
+            break;
         }
     }
 
