@@ -25,6 +25,7 @@ bool OutputCcr = false;
 bool OutputObm = false;
 bool OutputPng = false;
 bool OutputBmp = false;
+bool OutputBgc = false;
 
 int NumBGCols = -1;
 unsigned char BGCol, BGCols[16]{};  //Background color
@@ -299,11 +300,12 @@ bool SaveImgFormat()
 
 bool OptimizeByColor()
 { 
-    unsigned char* ColRAM, * ScrHi, * ScrLo, * ScrRAM, * ColMap;
+    unsigned char* ColRAM, * ScrHi, * ScrLo, * ScrRAM, * ColMap, * BGC;
     ScrHi = new unsigned char[ColTabSize] {};
     ScrLo = new unsigned char[ColTabSize] {};
     ScrRAM = new unsigned char[ColTabSize] {};
     ColRAM = new unsigned char[ColTabSize] {};
+    BGC = new unsigned char[1];
     ColMap = new unsigned char[16 * ColTabSize] {};         //We still have UnusedColor = 16 here, so we need an extra map!!!
 
     int C64Col[17]{};       //0x00-0x10 (UnusedColor = 0x10)
@@ -854,6 +856,12 @@ bool OptimizeByColor()
         WriteBinaryFile(SaveFile + ".scr", ScrRAM, ColTabSize);
     }
 
+    if (OutputBgc)
+    {
+        BGC[0] = BGCol;
+        WriteBinaryFile(SaveFile + ".bgc", BGC, 1);
+    }
+
     unsigned char* CCR{};
     CCR = new unsigned char[ColTabSize / 2] {};
 
@@ -1087,11 +1095,12 @@ bool OptimizeImage()
         {
             cout << "***INFO***\tMore than one possible background color has been identified.\n";
             cout << "\t\tThe background color will be appened to the output file names.\n";
-            cout << "\t\tIf you only want one output background color then please specify it in the command-line.\n";
+            cout << "\t\tIf you only want one output background color then please specify it in the command-line,\n";
+            cout << "\t\tOr use 'x' to only use the first possible background color.\n";
         }
 
         bool ColFound = false;
-        if (NumBGCols > 0)
+        if ((NumBGCols > 0) && (CmdColors != "x"))
         {
             for (int i = 0; i < NumBGCols; i++)
             {
@@ -1129,7 +1138,7 @@ bool OptimizeImage()
 
                 //Check if the current background color is on the list
 
-                if (CmdColors.find(cCol) != string::npos)
+                if ((CmdColors == "x") || (CmdColors.find(cCol) != string::npos))
                 {
                     for (int I = 0; I < ColTabSize; I++)
                     {
@@ -1158,6 +1167,11 @@ bool OptimizeImage()
                     //ColTab0 can only contain UnusedColor and BGCol here!!! - we won't need to use it in OptimizeByColor()
 
                     OptimizeByColor();
+
+                    if (CmdColors == "x")
+                    {
+                        CmdColors = "";
+                    }
                 }
             }
         }
@@ -1646,10 +1660,11 @@ void ShowHelp()
     cout << "         2 - .ccr (compressed color RAM data)*\n";
     cout << "         o - .obm (optimized bitmap - 9503 bytes)**\n";
     cout << "         This parameter is optional.If omitted, then the default Koala file will be created.\n\n";
-    cout << "bgcolor: Output background color(s): 0123456789abcdef. SPOT will only create C64 files using the selected\n";
-    cout << "         background color(s). If omitted, SPOT will generate output files using all possible background colors.\n";
-    cout << "         If more than one background color is possible (and allowed) then SPOT will append the background color\n";
-    cout << "         to the output file name.\n\n";
+    cout << "bgcolor: Output background color(s): 0123456789abcdef or 'x'. SPOT will only create C64 files using the selected\n";
+    cout << "         background color(s). If 'x' is used as value then only the first possible background color will be used,\n";
+    cout << "         all other possible background colors will be ignored. If this option is omitted, then SPOT will generate\n";
+    cout << "         output files using all possible background colors. If more than one background color is possible (and\n";
+    cout << "         allowed) then SPOT will append the background colorto the output file name.\n\n";
     cout << "Examples\n";
     cout << "--------\n\n";
     cout << "spot picture.bmp -o newfolder/newfile -f msc -b 0\n";
@@ -1680,7 +1695,7 @@ int main(int argc, char* argv[])
 {
     cout << "\n";
     cout << "*********************************************************************\n";
-    cout << "SPOT 1.2 - Sparta's Picture Optimizing Tool for the C64 (C) 2021-2024\n";
+    cout << "SPOT 1.3 - Sparta's Picture Optimizing Tool for the C64 (C) 2021-2024\n";
     cout << "*********************************************************************\n";
     cout << "\n";
 
@@ -1770,6 +1785,7 @@ int main(int argc, char* argv[])
     OutputMap = (CmdOptions.find('m') != string::npos);
     OutputScr = (CmdOptions.find('s') != string::npos);
     OutputCol = (CmdOptions.find('c') != string::npos);
+    OutputBgc = (CmdOptions.find('g') != string::npos);
     OutputCcr = (CmdOptions.find('2') != string::npos);
     OutputObm = (CmdOptions.find('o') != string::npos);
     OutputPng = (CmdOptions.find('p') != string::npos);
