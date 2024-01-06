@@ -15,7 +15,7 @@ unsigned int PicH = 0;
 int CharCol = 0;
 int CharRow = 0;
 
-int PaletteCnt = c64palettes_size / 48;
+int NumPalettes = c64palettes_size / 48;
 
 bool OutputKla = false;
 bool OutputMap = false;
@@ -1216,13 +1216,13 @@ bool ConvertPicToC64Palette()
     int BestPaletteIndex{};
 
     int* BestPalette;
-    BestPalette = new int[PaletteCnt] {};
+    BestPalette = new int[NumPalettes] {};
 
     C64Bitmap.resize((size_t)PicW * 2 * PicH * 4);
     
     //First check if there is a direct palette match
     bool PaletteMatch = false;
-    for (int P = 0; P < PaletteCnt; P++)
+    for (int P = 0; P < NumPalettes; P++)
     {
         for (size_t Y = 0; Y < PicH; Y++)
         {
@@ -1268,7 +1268,7 @@ bool ConvertPicToC64Palette()
 
                 BestMatch = 0x10000000;
 
-                for (int P = 0; P < PaletteCnt; P++)
+                for (int P = 0; P < NumPalettes; P++)
                 {
                     for (int J = 0; J < 16; J++)
                     {
@@ -1292,7 +1292,7 @@ bool ConvertPicToC64Palette()
 
         BestPaletteIndex = -1;
         int BP = 0;
-        for (int I = 0; I < PaletteCnt; I++)
+        for (int I = 0; I < NumPalettes; I++)
         {
             if (BestPalette[I] > BP)
             {
