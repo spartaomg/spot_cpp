@@ -1652,14 +1652,15 @@ void ShowHelp()
     cout << "input:   An input image file to be optimized/converted. Only .png, .bmp, and .kla file types are accepted.\n\n";
     cout << "output:  The output folder and file name. File extension (if exists) will be ignored. If omitted, SPOT will create\n";
     cout << "         a <spot/input> folder and the input file's name will be used as output file name.\n\n";
-    cout << "format:  Output file formats: kmsc2o. Select as many as you want in any order:\n";
+    cout << "format:  Output file formats: kmscg2o. Select as many as you want in any order:\n";
     cout << "         k - .kla (Koala - 10003 bytes)\n";
     cout << "         m - .map (bitmap data)\n";
     cout << "         s - .scr (screen RAM data)\n";
     cout << "         c - .col (color RAM data)\n";
+    cout << "         g - .bgc (background color)\n";
     cout << "         2 - .ccr (compressed color RAM data)*\n";
     cout << "         o - .obm (optimized bitmap - 9503 bytes)**\n";
-    cout << "         This parameter is optional.If omitted, then the default Koala file will be created.\n\n";
+    cout << "         This parameter is optional. If omitted, then the default Koala file will be created.\n\n";
     cout << "bgcolor: Output background color(s): 0123456789abcdef or 'x'. SPOT will only create C64 files using the selected\n";
     cout << "         background color(s). If 'x' is used as value then only the first possible background color will be used,\n";
     cout << "         all other possible background colors will be ignored. If this option is omitted, then SPOT will generate\n";
@@ -1702,7 +1703,10 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 
-        cout << "Usage: spot input -o [output] -f [format] -b [bgcolor]\n";
+        cout << "Usage: spot input [options]\n";
+        cout << "options:    - o [output]\n";
+        cout << "            - f [format]\n";
+        cout << "            - b [bgcolor]\n";
         cout << "\n";
         cout << "Help:  spot -h\n";
         cout << "\n";
