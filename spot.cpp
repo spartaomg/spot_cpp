@@ -1658,8 +1658,8 @@ void ShowHelp()
     cout << "         s - .scr (screen RAM data)\n";
     cout << "         c - .col (color RAM data)\n";
     cout << "         g - .bgc (background color)\n";
-    cout << "         2 - .ccr (compressed color RAM data)*\n";
-    cout << "         o - .obm (optimized bitmap - 9503 bytes)**\n";
+    cout << "         2 - .ccr (compressed color RAM data)\n";
+    cout << "         o - .obm (optimized bitmap - 9503 bytes)\n";
     cout << "         This parameter is optional. If omitted, then the default Koala file will be created.\n\n";
     cout << "bgcolor: Output background color(s): 0123456789abcdef or 'x'. SPOT will only create C64 files using the selected\n";
     cout << "         background color(s). If 'x' is used as value then only the first possible background color will be used,\n";
@@ -1704,9 +1704,9 @@ int main(int argc, char* argv[])
     {
 
         cout << "Usage: spot input [options]\n";
-        cout << "options:    - o [output]\n";
-        cout << "            - f [format]\n";
-        cout << "            - b [bgcolor]\n";
+        cout << "options:    - o [output path and filename]\n";
+        cout << "            - f [output format(s)]\n";
+        cout << "            - b [background color(s)]\n";
         cout << "\n";
         cout << "Help:  spot -h\n";
         cout << "\n";
