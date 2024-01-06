@@ -1,4 +1,4 @@
-[unreleased changes for 1.3]
+[1.3 - in progress, unreleased]
 
 Fixed
 -----
@@ -10,3 +10,6 @@ Added
 - Added 'g' option to -f switch to save background color as a 1-byte long .BGC file
 - Added 'x' option to -b switch to only save files with the first background color match and ignore any other possible background colors
 
+[1.2 - 240105]
+
+Full rewrite in C++, minor optimizing algorithm update.
