@@ -933,6 +933,7 @@ bool OptimizeByColor()
     delete[] ScrRAM;
     delete[] ColMap;
     delete[] CCR;
+    delete[] BGC;
 
     return true;
 }
