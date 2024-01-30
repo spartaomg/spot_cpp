@@ -18,13 +18,16 @@
     <ClCompile Include="spot.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="c64palettes.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="paletteconvtab.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="thirdparty\lodepng.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="c64palettes.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hungarian.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

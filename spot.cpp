@@ -1,6 +1,8 @@
 
 #include "common.h"
 
+//#define DEBUG
+
 int PrgLen = 0;
 string InFile{}, OutFile{};
 string FPath{}, FName{}, FExt{};
@@ -14,8 +16,6 @@ unsigned int PicW = 0;
 unsigned int PicH = 0;
 int CharCol = 0;
 int CharRow = 0;
-
-int NumPalettes = c64palettes_size / 48;
 
 bool OutputKla = false;
 bool OutputMap = false;
@@ -76,6 +76,31 @@ struct color {
     unsigned char G;
     unsigned char B;
     unsigned char A;
+};
+
+struct yuv {
+    double Y;
+    double U;
+    double V;
+};
+
+static const int NP = 63;
+yuv c64palettesYUV[NP*16]{};
+
+const int rows = 16;
+const int cols = 16;
+
+int minSumIndices[16]{};
+
+string PaletteNames[NP]{
+"VICE 3.6 Pepto PAL","VICE 3.6 Pepto PAL Old","VICE 3.6 Pepto NTSC Sony","VICE 3.6 Pepto NTSC Sony","VICE 3.6 Colodore","VICE 3.6 VICE","VICE 3.6 C64HQ","VICE 3.6 C64S",
+"VICE 3.6 CCS64", "VICE 3.6 Frodo", "VICE 3.6 Godot", "VICE 3.6 PC64", "VICE 3.6 RGB", "VICE 3.6 ChristopherJam", "VICE 3.6 Deekay", "VICE 3.6 PALette",
+"VICE 3.6 Ptoing", "VICE 3.6 Community Colors", "VICE 3.6 Pixcen", "VICE 3.6 VICE Internal", "VICE 3.6 Pepto PAL CRT", "VICE 3.6 Pepto PAL Old CRT", "VICE 3.6 Pepto NTSC Sony CRT", "VICE 3.6 Pepto NTSC CRT",
+"VICE 3.6 Colodore CRT", "VICE 3.6 VICE CRT", "VICE 3.6 C64HQ CRT", "VICE 3.6 C64S CRT", "VICE 3.6 CCS64 CRT", "VICE 3.6 Frodo CRT", "VICE 3.6 Godot CRT", "VICE 3.6 PC64 CRT",
+"VICE 3.6 RGB CRT", "VICE 3.6 ChristopherJam CRT", "VICE 3.6 Deekay CRT", "VICE 3.6 PALette CRT", "VICE 3.6 Ptoing CRT", "VICE 3.6 Community Colors CRT", "VICE 3.6 Pixcen CRT", "VICE 3.8 C64HQ",
+"VICE 3.8 C64S", "VICE 3.8 CCS64", "VICE 3.8 CristopherJam", "VICE 3.8 Colodore", "VICE 3.8 Community Colors", "VICE 3.8 Deekay", "VICE 3.8 Frodo", "VICE 3.8 Godot",
+"VICE 3.8 PALette", "VICE 3.8 PALette 6569R1", "VICE 3.8 PALette 6569R5", "VICE 3.8 PALette 8565R2", "VICE 3.8 PC64", "VICE 3.8 Pepto NTSC Sony", "VICE 3.8 Pepto NTSC", "VICE 3.8 Pepto PAL",
+"VICE 3.8 Pepto PAL Old", "VICE 3.8 Pixcen", "VICE 3.8 Ptoing", "VICE 3.8 RGB", "VICE 3.8 VICE Original", "VICE 3.8 VICE Internal", "Pixcen Colodore"
 };
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -254,6 +279,61 @@ bool WriteBinaryFile(const string& FileName, vector <unsigned char>& Binary)
         cerr << "***CRITICAL***\tError opening file for writing " << FileName << "\n\n";
         return false;
     }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+double YUVDistance(yuv YUV1, yuv YUV2)
+{
+    double dY = YUV1.Y - YUV2.Y;
+    double dU = YUV1.U - YUV2.U;
+    double dV = YUV1.V - YUV2.V;
+
+    return dY * dY + dU * dU + dV * dV;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+yuv RGB2YUV(int RGBColor)
+{
+    int R = (RGBColor >> 16) & 0xff;
+    int G = (RGBColor >> 8) & 0xff;
+    int B = RGBColor & 0xff;
+
+    yuv YUV{};
+
+    YUV.Y = 0.299 * R + 0.587 * G + 0.114 * B;
+    YUV.U = -0.14713 * R - 0.28886 * G + 0.436 * B;     //0.492 * (B - YUV.Y);
+    YUV.V = 0.615 * R - 0.51499 * G - 0.10001 * B;      //0.877 * (R - YUV.Y);
+
+    return YUV;
+
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool SetColor(std::vector<unsigned char>& Img, size_t X, size_t Y, int Col)
+{
+    size_t Pos = (Y * (size_t)PicW * 2 * 4) + (X * 4);
+
+    if (Pos + 3 > Img.size())
+        return false;
+
+    Img[Pos + 0] = (Col >> 16) & 0xff;
+    Img[Pos + 1] = (Col >> 8) & 0xff;
+    Img[Pos + 2] = Col & 0xff;
+    Img[Pos + 3] = (Col >> 24) & 0xff;
+
+    return true;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+unsigned int GetColor(std::vector<unsigned char>& Img, size_t X, size_t Y)
+{
+    size_t Pos = (Y * (size_t)PicW * 2 * 4) + (X * 4);
+
+    return (Img[Pos + 0] << 16) + (Img[Pos + 1] << 8) + Img[Pos + 2];
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -944,7 +1024,7 @@ bool OptimizeImage()
 {
     bool ReturnStatus = true;
 
-    SaveImgFormat();
+    //SaveImgFormat();
 
     if ((OutputKla) || (OutputMap) || (OutputCol) || (OutputScr) || (OutputCcr) || (OutputObm))
     {
@@ -1197,6 +1277,11 @@ bool OptimizeImage()
 
 bool ConvertPicToC64Palette()
 {
+    for (int i = 0; i < c64palettes_size; i++)
+    {
+        c64palettesYUV[i] = RGB2YUV(c64palettes[i]);
+    }
+
     CharCol = PicW / 4;
     CharRow = PicH / 8;
 
@@ -1209,137 +1294,175 @@ bool ConvertPicToC64Palette()
         }
     }
 
-    unsigned char R{}, G{}, B{};
-    color PicCol{};
-    int dR{}, dG{}, dB{}, uR{};
-    int BestMatchIndex{};
-    double BestMatch{};
-    int BestPaletteIndex{};
-
     int* BestPalette;
     BestPalette = new int[NumPalettes] {};
 
-    C64Bitmap.resize((size_t)PicW * 2 * PicH * 4);
-    
-    //First check if there is a direct palette match
-    bool PaletteMatch = false;
-    for (int P = 0; P < NumPalettes; P++)
+    unsigned int ThisPalette[16]{};
+    for (int i = 0; i < 16; i++)
     {
-        for (size_t Y = 0; Y < PicH; Y++)
+        ThisPalette[i] = 0xffffffff;
+    }
+
+    C64Bitmap.resize((size_t)PicW * 2 * PicH * 4);
+
+    //Count colors in bitmap
+    int NumColors = 0;
+    for (size_t y = 0; y < PicH; y++)
+    {
+        for (size_t x = 0; x < PicW; x ++)
         {
-            for (size_t X = 0; X < PicW; X++)
+            unsigned int ThisCol = GetColor(Image, (x*2), y);
+            bool ColorMatch = false;
+            for (int c = 0; c < NumColors; c++)
             {
-                PaletteMatch = false;
-                PicCol = GetPixel(Image, X * 2, Y);
-                for (int J = 0; J < 16; J++)
-                {
-                    if ((c64palettes[(48 * P) + J] == PicCol.R) && (c64palettes[(48 * P) + 16 + J] == PicCol.G) && (c64palettes[(48 * P) + 32 + J] == PicCol.B))
-                    {
-                        //Use default palette
-
-                        color C64Color{ c64palettes[J], c64palettes[J + 16], c64palettes[J + 32] ,0};
-
-                        SetPixel(C64Bitmap, X * 2, Y, C64Color);
-                        SetPixel(C64Bitmap, (X * 2) + 1, Y, C64Color);
-
-                        PaletteMatch = true;
-                        break;
-                    }
-                }
-                if (!PaletteMatch)
+                ColorMatch = (ThisPalette[c] == ThisCol);
+                if (ColorMatch)
                     break;
             }
+            if (!ColorMatch)
+            {
+                if (NumColors == 16)
+                {
+                    cerr << "This picture cannot be processed because it contains more than 16 colors!";
+                    return false;
+                }
+                else
+                {
+                    ThisPalette[NumColors++] = ThisCol;
+                }
+            }
+        }
+    }
+
+    //First check if there is an exact palette match
+
+    int PaletteIdx = -1;
+
+    for (int i = 0; i < NumPalettes; i++)
+    {
+        bool PaletteMatch = false;
+        for (int t = 0; t < NumColors; t++)
+        {
+            bool ColorMatch = false;
+            for (int c = 0; c < 16; c++)
+            {
+                ColorMatch = (c64palettes[(i * 16) + c] == ThisPalette[t]);
+                if (ColorMatch)
+                {
+                    break;
+                }
+            }
+            PaletteMatch = ColorMatch;
             if (!PaletteMatch)
+            {
                 break;
+            }
         }
         if (PaletteMatch)
+        {
+            PaletteIdx = i;
             break;
+        }
     }
 
-    if (!PaletteMatch)
+    if (PaletteIdx > -1)
     {
-        //No direct match, identify the best matching C64 palette
-        for (size_t Y = 0; Y < PicH; Y++)
+        cout << "Exact palette match found: " << PaletteNames[PaletteIdx] << "\n";
+        
+        //Palette match found, convert to Pixcen palette
+        for (size_t y = 0; y < PicH; y++)
         {
-            for (size_t X = 0; X < PicW; X++)
+            for (size_t x = 0; x < PicW; x++)
             {
-                R = GetPixel(Image, X * 2, Y).R;
-                G = GetPixel(Image, X * 2, Y).G;
-                B = GetPixel(Image, X * 2, Y).B;
+                unsigned int ThisCol = GetColor(Image, (x*2), y);
 
-                BestMatch = 0x10000000;
-
-                for (int P = 0; P < NumPalettes; P++)
+                for (int i = 0; i < 16; i++)
                 {
-                    for (int J = 0; J < 16; J++)
+                    if (c64palettes[(PaletteIdx * 16) + i] == ThisCol)
                     {
-                        uR = (R + c64palettes[(P * 48) + J]) / 2;
-                        dR = R - c64palettes[(P * 48) + J];
-                        dG = G - c64palettes[(P * 48) + J + 16];
-                        dB = B - c64palettes[(P * 48) + J + 32];
-                        int cDiff = (((512 + uR) * dR * dR) >> 8) + (4 * dG * dG) + (((767 - uR) * dB * dB) >> 8);
-
-                        if (cDiff < BestMatch)
-                        {
-                            BestMatch = cDiff;
-                            BestMatchIndex = J;
-                            BestPaletteIndex = P;
-                        }
+                        int DefaultColor = c64palettes[18 * 16 + i];  //Use Pixcen palette because paletteconvtab works with that one.
+                        SetColor(C64Bitmap, (x * 2), y, DefaultColor);
+                        SetColor(C64Bitmap, (x * 2) + 1, y, DefaultColor);
                     }
                 }
-                BestPalette[BestPaletteIndex]++;
-            }
-        }
-
-        BestPaletteIndex = -1;
-        int BP = 0;
-        for (int I = 0; I < NumPalettes; I++)
-        {
-            if (BestPalette[I] > BP)
-            {
-                BP = BestPalette[I];
-                BestPaletteIndex = I;
-            }
-        }
-
-        //Now use the best matching palette to match colors
-        for (size_t Y = 0; Y < PicH; Y++)
-        {
-            for (size_t X = 0; X < PicW; X++)
-            {
-                R = GetPixel(Image, X * 2, Y).R;
-                G = GetPixel(Image, X * 2, Y).G;
-                B = GetPixel(Image, X * 2, Y).B;
-
-                BestMatch = 0x10000000;
-
-                for (int J = 0; J < 16; J++)
-                {
-                    uR = (R + c64palettes[(BestPaletteIndex * 48) + J]) / 2;
-                    dR = R - c64palettes[(BestPaletteIndex * 48) + J];
-                    dG = G - c64palettes[(BestPaletteIndex * 48) + J + 16];
-                    dB = B - c64palettes[(BestPaletteIndex * 48) + J + 32];
-                    int cDiff = (((512 + uR) * dR * dR) >> 8) + (4 * dG * dG) + (((767 - uR) * dB * dB) >> 8);
-
-                    if (cDiff < BestMatch)
-                    {
-                        BestMatch = cDiff;
-                        BestMatchIndex = J;
-                    }
-                }
-
-                //Use default palette
-                color C64Color{ c64palettes[BestMatchIndex], c64palettes[BestMatchIndex + 16], c64palettes[BestMatchIndex + 32], 0 };
-
-                SetPixel(C64Bitmap, X * 2, Y, C64Color);
-                SetPixel(C64Bitmap, (X * 2) + 1, Y, C64Color);
             }
         }
     }
-    
+    else
+    {
+        cout << "No exact palette match found. Closest palette: ";
+        
+        int BestPaletteIdx = 0;
+
+        yuv ThisPaletteYUV[16]{};
+
+        for (int i = 0; i < NumColors; i++)
+        {
+            ThisPaletteYUV[i] = RGB2YUV(ThisPalette[i]);;
+        }
+
+        double BestDistance = numeric_limits<double>::max();
+        int BestColorIdx[16]{};
+
+        for (int p = 0; p < NumPalettes; p++)
+        {
+            double ColorDistance[16][16]{};
+
+            for (int c = 0; c < 16; c++)
+            {
+                for (int t = 0; t < 16; t++)
+                {
+                    if (ThisPalette[t] == 0xffffffff)
+                    {
+                        ColorDistance[c][t] = 0;
+                    }
+                    else
+                    {
+                        ColorDistance[c][t] = YUVDistance(c64palettesYUV[p * 16 + c], ThisPaletteYUV[t]);
+                    }
+                }
+            }
+
+            double ThisDistance = HungarianAlgorithm(ColorDistance);
+            
+            if (ThisDistance < BestDistance)
+            {
+                BestDistance = ThisDistance;
+                BestPaletteIdx = p;
+                for (int i = 0; i < 16; i++)
+                {
+                    BestColorIdx[i] = PaletteAssignment[i];
+                }
+            }
+        }
+        
+        cout << PaletteNames[BestPaletteIdx] << "\n";
+
+        for (size_t y = 0; y < PicH; y++)
+        {
+            for (size_t x = 0; x < PicW; x++)
+            {
+                unsigned int ThisCol = GetColor(Image, (x * 2), y);
+                
+                for (int i = 0; i < NumColors; i++)
+                {
+                    if (ThisPalette[i] == ThisCol)  //Find the index of the color in ThisPalette
+                    {
+                        int ColorIndex = BestColorIdx[i];
+                        unsigned int DefaultColor = c64palettes[18 * 16 + ColorIndex]; //Identify the color in the Best Match Palette
+
+                        SetColor(C64Bitmap, (x * 2), y, DefaultColor);
+                        SetColor(C64Bitmap, (x * 2) + 1, y, DefaultColor);
+                    }
+                }
+            }
+        }
+    }
+
     delete[] BestPalette;
 
-    return OptimizeImage();
+    return OptimizeImage(); //
+
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1618,7 +1741,11 @@ bool ImportFromKoala()
                 Col = ColTab3[CI];
             }
 
-            color C64Color{ c64palettes[Col], c64palettes[Col + 16], c64palettes[Col + 32],0 };
+            //color C64Color{ oldc64palettes[Col], oldc64palettes[Col + 16], oldc64palettes[Col + 32],0 };
+
+            int C64Col = c64palettes[18 * 16 + Col];
+
+            color C64Color{ (unsigned char)((C64Col >> 16) & 0xff),(unsigned char)((C64Col >> 16) & 0xff),(unsigned char)(C64Col & 0xff) };
 
             SetPixel(Image, 2 * X, Y, C64Color);
             SetPixel(Image, (2 * X) + 1, Y, C64Color);
@@ -1703,7 +1830,12 @@ int main(int argc, char* argv[])
 
     if (argc == 1)
     {
-
+#ifdef DEBUG
+        InFile = "c:/spot/test/a.kla";
+        OutFile = "c:/spot/test/aa";
+        CmdOptions = "k";
+        CmdColors = "x";
+#else
         cout << "Usage: spot input [options]\n";
         cout << "options:    - o [output path and filename]\n";
         cout << "            - f [output format(s)]\n";
@@ -1713,6 +1845,7 @@ int main(int argc, char* argv[])
         cout << "\n";
 
         return EXIT_SUCCESS;
+#endif
     }
 
     vector <string> args;

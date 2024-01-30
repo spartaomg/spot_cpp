@@ -130,6 +130,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="c64palettes.cpp" />
+    <ClCompile Include="hungarian.cpp" />
     <ClCompile Include="paletteconvtab.cpp" />
     <ClCompile Include="spot.cpp" />
     <ClCompile Include="thirdparty\lodepng.cpp" />
