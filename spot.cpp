@@ -322,7 +322,7 @@ bool SetColor(std::vector<unsigned char>& Img, size_t X, size_t Y, int Col)
     Img[Pos + 0] = (Col >> 16) & 0xff;
     Img[Pos + 1] = (Col >> 8) & 0xff;
     Img[Pos + 2] = Col & 0xff;
-    Img[Pos + 3] = (Col >> 24) & 0xff;
+    Img[Pos + 3] = 0xff;    // (Col >> 24) & 0xff;
 
     return true;
 }
@@ -348,7 +348,7 @@ bool SetPixel(std::vector<unsigned char>& Img,size_t X, size_t Y, color Col)
     Img[Pos + 0] = Col.R;
     Img[Pos + 1] = Col.G;
     Img[Pos + 2] = Col.B;
-    Img[Pos + 3] = Col.A;
+    Img[Pos + 3] = 0xff;    // Col.A;
 
     return true;
 }
@@ -373,6 +373,51 @@ color GetPixel(std::vector<unsigned char>& Img, size_t X, size_t Y)
 
 bool SaveImgFormat()
 {
+    if (OutputPng == 1)
+    {
+        //Save PNG
+
+        if (OutFile.empty())
+        {
+            return false;
+        }
+
+        //Make sure directory exists
+
+        string DiskDir{};
+
+        for (size_t i = 0; i <= OutFile.length() - 1; i++)
+        {
+#if _WIN32 
+            if ((OutFile[i] == '\\') || (OutFile[i] == '/'))
+            {
+                if (DiskDir[DiskDir.length() - 1] != ':')   //Don't try to create root directory
+                {
+                    if (!CreateDirectory(DiskDir))
+                        return false;
+                }
+            }
+#elif __APPLE__ || __linux__
+            if ((OutFile[i] == '/') && (DiskDir.size() > 0) && (DiskDir != "~"))   //Don't try to create root directory and home directory
+            {
+                if (!CreateDirectory(DiskDir))
+                    return false;
+            }
+#endif
+            DiskDir += OutFile[i];
+        }
+
+        cout << "Writing " + OutFile + ".png...\n";
+
+        unsigned int error = lodepng::encode(OutFile + ".png", Image, PicW * 2, PicH);
+
+        if (error)
+        {
+            cout << "Error during encoding and saving PNG.\n";
+            return false;
+        }
+    }
+    
     return true;
 }
 
@@ -1024,7 +1069,7 @@ bool OptimizeImage()
 {
     bool ReturnStatus = true;
 
-    //SaveImgFormat();
+    SaveImgFormat();
 
     if ((OutputKla) || (OutputMap) || (OutputCol) || (OutputScr) || (OutputCcr) || (OutputObm))
     {
@@ -1551,10 +1596,11 @@ bool DecodeBmp()
                 {
                     int PaletteIndex = (Pixel >> b) % mod;
 
-                    Image[BmpOffset + 0] = BmpInfo->bmiColors[PaletteIndex].rgbRed;
-                    Image[BmpOffset + 1] = BmpInfo->bmiColors[PaletteIndex].rgbGreen;
-                    Image[BmpOffset + 2] = BmpInfo->bmiColors[PaletteIndex].rgbBlue;
-                    BmpOffset += 4;
+                    Image[BmpOffset++] = BmpInfo->bmiColors[PaletteIndex].rgbRed;
+                    Image[BmpOffset++] = BmpInfo->bmiColors[PaletteIndex].rgbGreen;
+                    Image[BmpOffset++] = BmpInfo->bmiColors[PaletteIndex].rgbBlue;
+                    Image[BmpOffset++] = 0xff;
+                    //BmpOffset += 4;
                 }
             }
         }
@@ -1569,10 +1615,11 @@ bool DecodeBmp()
 
             for (size_t X = 0; X < RowLen; X += BytesPerPx)              //Pixel row are read left to right
             {
-                Image[BmpOffset + 0] = ImgRaw[RowOffset + X + 2];
-                Image[BmpOffset + 1] = ImgRaw[RowOffset + X + 1];
-                Image[BmpOffset + 2] = ImgRaw[RowOffset + X + 0];
-                BmpOffset += 4;
+                Image[BmpOffset++] = ImgRaw[RowOffset + X + 2];
+                Image[BmpOffset++] = ImgRaw[RowOffset + X + 1];
+                Image[BmpOffset++] = ImgRaw[RowOffset + X + 0];
+                Image[BmpOffset++] = 0xff;
+                //BmpOffset += 4;
             }
         }
     }
@@ -1749,7 +1796,7 @@ bool ImportFromKoala()
 
             int C64Col = c64palettes[18 * 16 + Col];
 
-            color C64Color{ (unsigned char)((C64Col >> 16) & 0xff),(unsigned char)((C64Col >> 16) & 0xff),(unsigned char)(C64Col & 0xff) };
+            color C64Color{ (unsigned char)((C64Col >> 16) & 0xff),(unsigned char)((C64Col >> 8) & 0xff),(unsigned char)(C64Col & 0xff) };
 
             SetPixel(Image, 2 * X, Y, C64Color);
             SetPixel(Image, (2 * X) + 1, Y, C64Color);
@@ -1835,9 +1882,9 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/test/c.png";
-        OutFile = "c:/spot/test/c";
-        CmdOptions = "k";
+        InFile = "c:/spot/test/a.kla";
+        OutFile = "c:/spot/test/ak";
+        CmdOptions = "p";
         CmdColors = "x";
 #else
         cout << "Usage: spot input [options]\n";
