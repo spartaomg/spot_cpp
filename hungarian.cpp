@@ -9,7 +9,6 @@ int NumCovered = 0;
 double matrix[rows][cols]{};
 int amatrix[rows][cols]{};
 int pmatrix[rows][cols]{};
-int tmpmatrix[rows][cols]{};
 
 int CoveredRows[rows]{};
 int CoveredCols[cols]{};
@@ -198,8 +197,6 @@ void CreateNewZeros()
 	//Add it to all double-covered elements
 	
 	double MinVal = numeric_limits<double>::max();
-	//int ir = 0;
-	//int ic = 0;
 
 	for (int r = 0; r < rows; r++)
 		if (CoveredRows[r] == 0)
@@ -209,12 +206,8 @@ void CreateNewZeros()
 					if (MinVal > matrix[r][c])
 					{
 						MinVal = matrix[r][c];
-						//ir = r;
-						//ic = c;
 					}
 				}
-
-	//cout << "\nMinVal: " << MinVal << "\t" <<ir<<"\t" << ic << "\n\n";
 
 	for (int r = 0; r < rows; r++)
 	{
@@ -240,40 +233,26 @@ void CreateNewZeros()
 
 void FlipZeros(int pr, int pc)
 {
-	int ac = 0;
+	int ac = pc;						//the original assigned 0 is on the same column
 	int ar = 0;
-
-	//Flip 0s
-
-	//Create temp assigned matrix
-	for (int r = 0; r < rows; r++)
-		for (int c = 0; c < cols; c++)
-			tmpmatrix[r][c] = amatrix[r][c];
-
-	tmpmatrix[pr][pc] = 1;		//assign primed 0
-
-	ac = pc;					//the original assigned 0 is on the same column
-	for (ar = 0; ar < rows; ar++)
+	
+	for (ar = 0; ar < rows; ar++)		//find its row
 		if (amatrix[ar][ac] == 1)
 			break;
-	//ar = AssignedRow[ac];		//find its row
+
+	amatrix[pr][pc] = 1;				//assign primed 0
 
 	while (ar < rows)
 	{
-		//unassign assigned 0
-		
-		tmpmatrix[ar][ac] = 0;
-
 		//find primed 0 - there always must be one
 
-		pr = ar;			//same row as the original assigned 0 (now un-assigned)
+		pr = ar;						//same row as the original assigned 0 (now un-assigned)
 		for (pc = 0; pc < cols; pc++)
 			if (pmatrix[pr][pc] == 1)
 				break;
 
-		//assign primed 0
-		
-		tmpmatrix[pr][pc] = 1;	//assign this 0
+		amatrix[ar][ac] = 0;			//unassign assigned 0
+
 
 		//find assigned 0 in current column
 
@@ -281,16 +260,20 @@ void FlipZeros(int pr, int pc)
 		for (ar = 0; ar < rows; ar++)
 			if (amatrix[ar][ac] == 1)
 				break;
+
+		//assign primed 0
+
+		amatrix[pr][pc] = 1;		//assign this 0
 	}
 
 	//Update amatrix, delete pmatrix, uncover all rows, cover assigned columens
+
 	NumCovered = 0;
 	for (ar = 0; ar < rows; ar++)
 	{
 		CoveredRows[ar] = 0;
 		for (ac = 0; ac < cols; ac++)
 		{
-			amatrix[ar][ac] = tmpmatrix[ar][ac];
 			if (amatrix[ar][ac] == 1)
 			{
 				CoveredCols[ac] = 1;
@@ -305,7 +288,6 @@ void FlipZeros(int pr, int pc)
 
 void CoverLines()
 {
-
 	while (NumCovered < cols)
 	{
 		bool Found0 = true;
@@ -325,7 +307,6 @@ void CoverLines()
 						{
 							if (matrix[r][c] == 0)
 							{
-								//cout << "Primed: " << "\t" << r << "\t" << c << "\n";
 								pmatrix[r][c] = 1;		//Uncovered 0 found, prime it
 
 								//Primed 0s are either in the same row or the same col of an assigned 0
@@ -354,16 +335,16 @@ void CoverLines()
 									Flipped0 = true;
 									break;
 									//We will exit both [c] and [r] for loops and the ((Found0) && (!Flipped0) while loop too
-								}	//end  (AssignedCol[r] > -1)
-							}	//end if (matrix[r][c] == 0)
-						}	//end if (CoveredRows[r] == 0)
-					}	//next r
-				}	//end if (CoveredCols[c] == 0)
+								}
+							}
+						}
+					}
+				}
 				//We exit both for loops if (Flipped0), but only the inner loop if (Found0)
 				if (Flipped0)
 					break;
-			}	//next c
-		}	//end while ((Found0) && (!Flipped0))
+			}
+		}
 
 		if (!Flipped0)
 		{
@@ -374,7 +355,7 @@ void CoverLines()
 			//->uncover all lines, clear amatrix and pmatrix
 			//->assign 0s and cover columns, calculate NumCovered
 		}	//end if (!Flipped0)
-	}	//end while (NumCovered < cols)
+	}
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------

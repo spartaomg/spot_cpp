@@ -1365,6 +1365,10 @@ bool ConvertPicToC64Palette()
         }
     }
 
+#ifdef DEBUG
+    PaletteIdx = -1;
+#endif
+
     if (PaletteIdx > -1)
     {
         cout << "Exact palette match found: " << PaletteNames[PaletteIdx] << "\n";
@@ -1831,8 +1835,8 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/test/a.kla";
-        OutFile = "c:/spot/test/aa";
+        InFile = "c:/spot/test/c.png";
+        OutFile = "c:/spot/test/c";
         CmdOptions = "k";
         CmdColors = "x";
 #else
