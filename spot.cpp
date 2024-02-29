@@ -98,7 +98,7 @@ string PaletteNames[NP]{
 "VICE 3.6 Ptoing", "VICE 3.6 Community Colors", "VICE 3.6 Pixcen", "VICE 3.6 VICE Internal", "VICE 3.6 Pepto PAL CRT", "VICE 3.6 Pepto PAL Old CRT", "VICE 3.6 Pepto NTSC Sony CRT", "VICE 3.6 Pepto NTSC CRT",
 "VICE 3.6 Colodore CRT", "VICE 3.6 VICE CRT", "VICE 3.6 C64HQ CRT", "VICE 3.6 C64S CRT", "VICE 3.6 CCS64 CRT", "VICE 3.6 Frodo CRT", "VICE 3.6 Godot CRT", "VICE 3.6 PC64 CRT",
 "VICE 3.6 RGB CRT", "VICE 3.6 ChristopherJam CRT", "VICE 3.6 Deekay CRT", "VICE 3.6 PALette CRT", "VICE 3.6 Ptoing CRT", "VICE 3.6 Community Colors CRT", "VICE 3.6 Pixcen CRT", "VICE 3.8 C64HQ",
-"VICE 3.8 C64S", "VICE 3.8 CCS64", "VICE 3.8 CristopherJam", "VICE 3.8 Colodore", "VICE 3.8 Community Colors", "VICE 3.8 Deekay", "VICE 3.8 Frodo", "VICE 3.8 Godot",
+"VICE 3.8 C64S", "VICE 3.8 CCS64", "VICE 3.8 ChristopherJam", "VICE 3.8 Colodore", "VICE 3.8 Community Colors", "VICE 3.8 Deekay", "VICE 3.8 Frodo", "VICE 3.8 Godot",
 "VICE 3.8 PALette", "VICE 3.8 PALette 6569R1", "VICE 3.8 PALette 6569R5", "VICE 3.8 PALette 8565R2", "VICE 3.8 PC64", "VICE 3.8 Pepto NTSC Sony", "VICE 3.8 Pepto NTSC", "VICE 3.8 Pepto PAL",
 "VICE 3.8 Pepto PAL Old", "VICE 3.8 Pixcen", "VICE 3.8 Ptoing", "VICE 3.8 RGB", "VICE 3.8 VICE Original", "VICE 3.8 VICE Internal", "Pixcen Colodore"
 };
