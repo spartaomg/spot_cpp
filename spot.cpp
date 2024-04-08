@@ -639,7 +639,9 @@ bool OptimizeByColor()
     }
 
     //----------------------------------------------------------------------------
-
+    //DISABLING THESE TWO OPTIMIZATION STEPS IMPROVES OVERALL COMPRESSIBILITY OF THE THREE TEST PICS WITH BOTH DALI AND EXOMIZER...
+    //----------------------------------------------------------------------------
+/*
     for (int I = 1; I < ColTabSize - 1; I++)
     {
         if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]) && (ScrHi[I] != 255) && (ScrHi[I - 1] != 255) && (ScrHi[I + 1] != 255))
@@ -683,10 +685,10 @@ bool OptimizeByColor()
             }
         }
     }
-
+*/
     //----------------------------------------------------------------------------
-
-    //Find loner bytes that can be swapped
+/*
+    //Find loner bytes that can be swapped - this doesn't seem to help at all...
     for (int I = 1; I < ColTabSize - 1; I++)
     {
         if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]) && (ScrHi[I] != 255))
@@ -797,7 +799,7 @@ bool OptimizeByColor()
             }
         }
     }
-
+*/
     if (ColRAM[0] == 255)
     {
         ColRAM[0] = 0;      //In case the whole array remained unused
@@ -857,11 +859,11 @@ bool OptimizeByColor()
         }
     }
 
-    //Combine screen RAM hi and low nibbles
+    //Combine screen RAM high and low nibbles
     for (int I = 0; I < ColTabSize; I++)
     {
         unsigned char Tmp = ColRAM[I];
-        ColRAM[I] = ScrLo[I];                   //Swap ColRAM with ScrLo - this results in improved compressibility
+        ColRAM[I] = ScrLo[I];                   //Swap ColRAM with ScrLo - this results in improved compressibility for some reason
         ScrLo[I] = Tmp;
         ScrRAM[I] = (ScrHi[I] * 16) + ScrLo[I];
     }
@@ -1220,7 +1222,7 @@ bool OptimizeImage()
         if ((NumBGCols > 1) && (CmdColors.size() != 1))
         {
             cout << "***INFO***\tMore than one possible background color has been identified.\n";
-            cout << "\t\tThe background color will be appened to the output file names.\n";
+            cout << "\t\tThe background color will be appended to the output file names.\n";
             cout << "\t\tIf you only want one output background color then please specify it in the command-line,\n";
             cout << "\t\tOr use 'x' to only use the first possible background color.\n";
         }
@@ -1246,7 +1248,7 @@ bool OptimizeImage()
 
         if (ReturnStatus)
         {
-            //Optimize bitmap with all possible background color
+            //Optimize bitmap with all possible background colors
 
             for (int C = 0; C < NumBGCols; C++)
             {
@@ -1884,7 +1886,7 @@ int main(int argc, char* argv[])
 #ifdef DEBUG
         InFile = "c:/spot/test/a.kla";
         OutFile = "c:/spot/test/ak";
-        CmdOptions = "p";
+        CmdOptions = "k";
         CmdColors = "x";
 #else
         cout << "Usage: spot input [options]\n";
