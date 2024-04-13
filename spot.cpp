@@ -500,7 +500,6 @@ bool OptimizeByColor()
         {
             ColRAM[I] = MUC[2];
         }
-
     }
 
     for (int J = 3; J < 15; J++)
@@ -638,59 +637,62 @@ bool OptimizeByColor()
         }
     }
 
-    //----------------------------------------------------------------------------
-    //DISABLING THESE TWO OPTIMIZATION STEPS IMPROVES OVERALL COMPRESSIBILITY OF THE THREE TEST PICS WITH BOTH DALI AND EXOMIZER...
-    //----------------------------------------------------------------------------
-/*
     for (int I = 1; I < ColTabSize - 1; I++)
     {
-        if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]) && (ScrHi[I] != 255) && (ScrHi[I - 1] != 255) && (ScrHi[I + 1] != 255))
+        if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]))// && (ScrHi[I] != 255))// && (ScrHi[I + 1] != 255))
         {
-            if (ScrLo[I] == 255)
+            if (((ScrLo[I] == 255) && (ScrLo[I - 1] == ScrHi[I])) || ((ScrLo[I] == 255) && (ScrLo[I + 1] == ScrHi[I])))
             {
                 ScrLo[I] = ScrHi[I];
                 ScrHi[I] = 255;
             }
-            else if (ColRAM[I] == 255)
+            else if (((ColRAM[I] == 255) && (ColRAM[I - 1] == ScrHi[I])) || ((ColRAM[I] == 255) && (ColRAM[I + 1] == ScrHi[I])))
             {
                 ColRAM[I] = ScrHi[I];
                 ScrHi[I] = 255;
             }
         }
 
-        if ((ScrLo[I] != ScrLo[I - 1]) && (ScrLo[I] != ScrLo[I + 1]) && (ScrLo[I] != 255) && (ScrLo[I - 1] != 255) && (ScrLo[I + 1] != 255))
+        if ((ScrLo[I] != ScrLo[I - 1]) && (ScrLo[I] != ScrLo[I + 1]))// && (ScrLo[I] != 255))// && (ScrLo[I + 1] != 255))
         {
-            if (ColRAM[I] == 255)
+            if (((ColRAM[I] == 255) && (ColRAM[I - 1] == ScrLo[I])) || ((ColRAM[I] == 255) && (ColRAM[I + 1] == ScrLo[I])))
             {
                 ColRAM[I] = ScrLo[I];
                 ScrLo[I] = 255;
             }
-            else if (ScrHi[I] == 255)
+            else if (((ScrHi[I] == 255) && (ScrHi[I - 1] == ScrLo[I])) || ((ScrHi[I] == 255) && (ScrHi[I + 1] == ScrLo[I])))
             {
                 ScrHi[I] = ScrLo[I];
                 ScrLo[I] = 255;
             }
         }
-        if ((ColRAM[I] != ColRAM[I - 1]) && (ColRAM[I] != ColRAM[I + 1]) && (ColRAM[I] != 255) && (ColRAM[I - 1] != 255) && (ColRAM[I + 1] != 255))
+
+        if ((ColRAM[I] != ColRAM[I - 1]) && (ColRAM[I] != ColRAM[I + 1]))// && (ColRAM[I] != 255))// && (ColRAM[I + 1] != 255))
         {
-            if (ScrHi[I] == 255)
+            if (((ScrHi[I] == 255) && (ScrHi[I - 1] == ColRAM[I])) || ((ScrHi[I] == 255) && (ScrHi[I + 1] == ColRAM[I])))
             {
                 ScrHi[I] = ColRAM[I];
                 ColRAM[I] = 255;
             }
-            else if (ScrLo[I] == 255)
+            else if (((ScrLo[I] == 255) && (ScrLo[I - 1] == ColRAM[I])) || ((ScrLo[I] == 255) && (ScrLo[I + 1] == ColRAM[I])))
             {
                 ScrLo[I] = ColRAM[I];
                 ColRAM[I] = 255;
             }
         }
     }
-*/
+
     //----------------------------------------------------------------------------
+
+    //Find loner bytes that can be swapped - this doesn't seem to help...
 /*
-    //Find loner bytes that can be swapped - this doesn't seem to help at all...
     for (int I = 1; I < ColTabSize - 1; I++)
     {
+        if (I == 20 * 40 + 24)
+        {
+            I += 0;
+        }
+        bool Chg = false;
         if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]) && (ScrHi[I] != 255))
         {
             if (ScrHi[I] == ScrLo[I + 1])
@@ -699,6 +701,7 @@ bool OptimizeByColor()
                 {
                     ScrHi[I] = ScrLo[I];
                     ScrLo[I] = ScrLo[I + 1];
+                    Chg = true;
                 }
             }
             else if (ScrHi[I] == ScrLo[I - 1])
@@ -707,6 +710,7 @@ bool OptimizeByColor()
                 {
                     ScrHi[I] = ScrLo[I];
                     ScrLo[I] = ScrLo[I - 1];
+                    Chg = true;
                 }
             }
             else if (ScrHi[I] == ColRAM[I + 1])
@@ -715,6 +719,7 @@ bool OptimizeByColor()
                 {
                     ScrHi[I] = ColRAM[I];
                     ColRAM[I] = ColRAM[I + 1];
+                    Chg = true;
                 }
             }
             else if (ScrHi[I] == ColRAM[I - 1])
@@ -723,6 +728,7 @@ bool OptimizeByColor()
                 {
                     ScrHi[I] = ColRAM[I];
                     ColRAM[I] = ColRAM[I - 1];
+                    Chg = true;
                 }
             }
         }
@@ -735,6 +741,7 @@ bool OptimizeByColor()
                 {
                     ScrLo[I] = ScrHi[I];
                     ScrHi[I] = ScrHi[I + 1];
+                    Chg = true;
                 }
             }
             else if (ScrLo[I] == ScrHi[I - 1])
@@ -743,6 +750,7 @@ bool OptimizeByColor()
                 {
                     ScrLo[I] = ScrHi[I];
                     ScrHi[I] = ScrHi[I - 1];
+                    Chg = true;
                 }
             }
             else if (ScrLo[I] == ColRAM[I + 1])
@@ -751,6 +759,7 @@ bool OptimizeByColor()
                 {
                     ScrLo[I] = ColRAM[I];
                     ColRAM[I] = ColRAM[I + 1];
+                    Chg = true;
                 }
             }
             else if (ScrLo[I] == ColRAM[I - 1])
@@ -759,6 +768,7 @@ bool OptimizeByColor()
                 {
                     ScrLo[I] = ColRAM[I];
                     ColRAM[I] = ColRAM[I - 1];
+                    Chg = true;
                 }
             }
         }
@@ -771,6 +781,7 @@ bool OptimizeByColor()
                 {
                     ColRAM[I] = ScrLo[I];
                     ScrLo[I] = ScrLo[I + 1];
+                    Chg = true;
                 }
             }
             else if (ColRAM[I] == ScrLo[I - 1])
@@ -779,6 +790,7 @@ bool OptimizeByColor()
                 {
                     ColRAM[I] = ScrLo[I];
                     ScrLo[I] = ScrLo[I - 1];
+                    Chg = true;
                 }
             }
             else if (ColRAM[I] == ScrHi[I + 1])
@@ -787,6 +799,7 @@ bool OptimizeByColor()
                 {
                     ColRAM[I] = ScrHi[I];
                     ScrHi[I] = ScrHi[I + 1];
+                    Chg = true;
                 }
             }
             else if (ColRAM[I] == ScrHi[I - 1])
@@ -795,8 +808,13 @@ bool OptimizeByColor()
                 {
                     ColRAM[I] = ScrHi[I];
                     ScrHi[I] = ScrHi[I - 1];
+                    Chg = true;
                 }
             }
+        }
+        if (Chg)
+        {
+            I--;
         }
     }
 */
@@ -859,6 +877,533 @@ bool OptimizeByColor()
         }
     }
 
+    //Find color overlaps (same color in different color spaces) and eliminate them by extending previous or following sequence (whichever is longer)
+
+    for (int i = 1; i < ColTabSize - 1; i++)
+    {
+
+        int LastMatch = i;
+
+        if (ScrHi[i] == ScrLo[i])
+        {
+            unsigned char HiBefore = ScrHi[i - 1];
+            unsigned char LoBefore = ScrLo[i - 1];
+            unsigned char HiAfter = 0x10;
+            unsigned char LoAfter = 0x10;
+            
+            int SeqBefore1 = 0;
+            int SeqBefore2 = 0;
+            int SeqAfter1 = 0;
+            int SeqAfter2 = 0;
+
+            for (int j = i; j < ColTabSize - 1; j++)
+            {
+                if (ScrHi[j] == ScrLo[j])
+                {
+                    LastMatch = j;
+                }
+                else
+                {
+                    HiAfter = ScrHi[j];
+                    LoAfter = ScrLo[j];
+                    break;
+                }
+            }
+            
+            for (int j = i - 1; j >= 0; j--)
+            {
+                if (ScrHi[j] == ScrHi[i - 1])
+                {
+                    SeqBefore1++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            for (int j = i - 1; j >= 0; j--)
+            {
+                if (ScrLo[j] == ScrLo[i - 1])
+                {
+                    SeqBefore2++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            for (int j = LastMatch + 1; j < ColTabSize; j++)
+            {
+                if (ScrHi[j] == ScrHi[LastMatch + 1])
+                {
+                    SeqAfter1++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            for (int j = LastMatch + 1; j < ColTabSize; j++)
+            {
+                if (ScrLo[j] == ScrLo[LastMatch + 1])
+                {
+                    SeqAfter2++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if ((SeqBefore1 >= SeqBefore2) && (SeqBefore1 >= SeqAfter1) && (SeqBefore1 >= SeqAfter2))
+            {
+                if (HiBefore != ScrHi[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrHi[j] = HiBefore;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrHi[j] = HiAfter;
+                    }
+                }
+            }
+            else if ((SeqBefore2 >= SeqBefore1) && (SeqBefore2 >= SeqAfter1) && (SeqBefore2 >= SeqAfter2))
+            {
+                if (LoBefore != ScrLo[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrLo[j] = LoBefore;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrLo[j] = LoAfter;
+                    }
+                }
+            }
+            else if ((SeqAfter1 >= SeqBefore1) && (SeqAfter1 >= SeqBefore2) && (SeqAfter1 >= SeqAfter2))
+            {
+                if (HiAfter != ScrHi[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrHi[j] = HiAfter;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrHi[j] = HiBefore;
+                    }
+                }
+            }
+            else
+            {
+                if (LoAfter != ScrLo[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrLo[j] = LoAfter;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrLo[j] = LoBefore;
+                    }
+                }
+            }
+        }
+
+        if (ScrHi[i] == ColRAM[i])
+        {
+
+            unsigned char HiBefore = ScrHi[i - 1];
+            unsigned char CRBefore = ColRAM[i - 1];
+            unsigned char HiAfter = 0x10;
+            unsigned char CRAfter = 0x10;
+
+            int SeqBefore1 = 0;
+            int SeqBefore2 = 0;
+            int SeqAfter1 = 0;
+            int SeqAfter2 = 0;
+
+            for (int j = i; j < ColTabSize - 1; j++)
+            {
+                if (ScrHi[j] == ColRAM[j])
+                {
+                    LastMatch = j;
+                }
+                else
+                {
+                    HiAfter = ScrHi[j];
+                    CRAfter = ColRAM[j];
+                    break;
+                }
+            }
+
+            for (int j = i - 1; j >= 0; j--)
+            {
+                if (ScrHi[j] == ScrHi[i - 1])
+                {
+                    SeqBefore1++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            for (int j = i - 1; j >= 0; j--)
+            {
+                if (ColRAM[j] == ColRAM[i - 1])
+                {
+                    SeqBefore2++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            for (int j = LastMatch + 1; j < ColTabSize; j++)
+            {
+                if (ScrHi[j] == ScrHi[LastMatch + 1])
+                {
+                    SeqAfter1++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            for (int j = LastMatch + 1; j < ColTabSize; j++)
+            {
+                if (ColRAM[j] == ColRAM[LastMatch + 1])
+                {
+                    SeqAfter2++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if ((SeqBefore1 >= SeqBefore2) && (SeqBefore1 >= SeqAfter1) && (SeqBefore1 >= SeqAfter2))
+            {
+                if (HiBefore != ScrHi[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrHi[j] = HiBefore;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrHi[j] = HiAfter;
+                    }
+                }
+            }
+            else if ((SeqBefore2 >= SeqBefore1) && (SeqBefore2 >= SeqAfter1) && (SeqBefore2 >= SeqAfter2))
+            {
+                if (CRBefore != ColRAM[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ColRAM[j] = CRBefore;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ColRAM[j] = CRAfter;
+                    }
+                }
+            }
+            else if ((SeqAfter1 >= SeqBefore1) && (SeqAfter1 >= SeqBefore2) && (SeqAfter1 >= SeqAfter2))
+            {
+                if (HiAfter != ScrHi[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrHi[j] = HiAfter;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrHi[j] = HiBefore;
+                    }
+                }
+            }
+            else
+            {
+                if (CRAfter != ColRAM[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ColRAM[j] = CRAfter;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ColRAM[j] = CRBefore;
+                    }
+                }
+            }
+        }
+
+        if (ScrLo[i] == ColRAM[i])
+        {
+            unsigned char LoBefore = ScrLo[i - 1];
+            unsigned char CRBefore = ColRAM[i - 1];
+            unsigned char LoAfter = 0x10;
+            unsigned char CRAfter = 0x10;
+
+            int SeqBefore1 = 0;
+            int SeqBefore2 = 0;
+            int SeqAfter1 = 0;
+            int SeqAfter2 = 0;
+
+            for (int j = i; j < ColTabSize - 1; j++)
+            {
+                if (ScrLo[j] == ColRAM[j])
+                {
+                    LastMatch = j;
+                }
+                else
+                {
+                    LoAfter = ScrLo[j];
+                    CRAfter = ColRAM[j];
+                    break;
+                }
+            }
+
+            for (int j = i - 1; j >= 0; j--)
+            {
+                if (ScrLo[j] == ScrLo[i - 1])
+                {
+                    SeqBefore1++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            for (int j = i - 1; j >= 0; j--)
+            {
+                if (ColRAM[j] == ColRAM[i - 1])
+                {
+                    SeqBefore2++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            for (int j = LastMatch + 1; j < ColTabSize; j++)
+            {
+                if (ScrLo[j] == ScrLo[LastMatch + 1])
+                {
+                    SeqAfter1++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            for (int j = LastMatch + 1; j < ColTabSize; j++)
+            {
+                if (ColRAM[j] == ColRAM[LastMatch + 1])
+                {
+                    SeqAfter2++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if ((SeqBefore1 >= SeqBefore2) && (SeqBefore1 >= SeqAfter1) && (SeqBefore1 >= SeqAfter2))
+            {
+                if (LoBefore != ScrLo[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrLo[j] = LoBefore;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrLo[j] = LoAfter;
+                    }
+                }
+            }
+            else if ((SeqBefore2 >= SeqBefore1) && (SeqBefore2 >= SeqAfter1) && (SeqBefore2 >= SeqAfter2))
+            {
+                if (CRBefore != ColRAM[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ColRAM[j] = CRBefore;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ColRAM[j] = CRAfter;
+                    }
+                }
+            }
+            else if ((SeqAfter1 >= SeqBefore1) && (SeqAfter1 >= SeqBefore2) && (SeqAfter1 >= SeqAfter2))
+            {
+                if (LoAfter != ScrLo[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrLo[j] = LoAfter;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ScrLo[j] = LoBefore;
+                    }
+                }
+            }
+            else
+            {
+                if (CRAfter != ColRAM[i])
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ColRAM[j] = CRAfter;
+                    }
+                }
+                else
+                {
+                    for (int j = i; j <= LastMatch; j++)
+                    {
+                        ColRAM[j] = CRBefore;
+                    }
+                }
+            }
+        }
+    }
+/*
+    for (int i = 1; i < ColTabSize - 1; i++)
+    {
+        bool Chg = false;
+        if ((ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]) && (ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]))
+        {
+            if ((ScrHi[i] == ScrLo[i - 1]) || (ScrHi[i] == ScrLo[i + 1]))
+            {
+                unsigned char Tmp = ScrLo[i];
+                ScrLo[i] = ScrHi[i];
+                ScrHi[i] = Tmp;
+                Chg = true;
+            }
+        }
+
+        if ((ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]) && (ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]))
+        {
+            if ((ScrHi[i] == ColRAM[i - 1]) || (ScrHi[i] == ColRAM[i + 1]))
+            {
+                unsigned char Tmp = ColRAM[i];
+                ColRAM[i] = ScrHi[i];
+                ScrHi[i] = Tmp;
+                Chg = true;
+            }
+        }
+
+        if ((ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]) && (ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]))
+        {
+            if ((ScrLo[i] == ColRAM[i - 1]) || (ScrLo[i] == ColRAM[i + 1]))
+            {
+                unsigned char Tmp = ColRAM[i];
+                ColRAM[i] = ScrLo[i];
+                ScrLo[i] = Tmp;
+                Chg = true;
+            }
+        }
+
+        if ((ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]) && (ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]))
+        {
+            if ((ScrLo[i] == ScrHi[i - 1]) || (ScrLo[i] == ScrHi[i + 1]))
+            {
+                unsigned char Tmp = ScrHi[i];
+                ScrHi[i] = ScrLo[i];
+                ScrLo[i] = Tmp;
+                Chg = true;
+            }
+        }
+
+        if ((ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]) && (ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]))
+        {
+            if ((ScrLo[i] == ColRAM[i - 1]) || (ScrLo[i] == ColRAM[i + 1]))
+            {
+                unsigned char Tmp = ColRAM[i];
+                ColRAM[i] = ScrLo[i];
+                ScrLo[i] = Tmp;
+                Chg = true;
+            }
+        }
+
+        if ((ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]) && (ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]))
+        {
+            if ((ScrHi[i] == ColRAM[i - 1]) || (ScrHi[i] == ColRAM[i + 1]))
+            {
+                unsigned char Tmp = ColRAM[i];
+                ColRAM[i] = ScrHi[i];
+                ScrHi[i] = Tmp;
+                Chg = true;
+            }
+        }
+
+        if (Chg)
+        {
+            i--;
+        }
+    }
+*/
+    int NumSeq0{}, NumSeq1{}, NumSeq2{};
+    
+    for (int i = 0; i < ColTabSize - 1; i++)
+    {
+        if (ScrHi[i] != ScrHi[i + 1])
+        {
+            NumSeq0++;
+        }
+        if (ScrLo[i] != ScrLo[i + 1])
+        {
+            NumSeq1++;
+        }
+        if (ColRAM[i] != ColRAM[i + 1])
+        {
+            NumSeq2++;
+        }
+    }
+
+    //cout << NumSeq0 << "\t" << NumSeq1 << "\t" << NumSeq2 << "\n";
+
     //Combine screen RAM high and low nibbles
     for (int I = 0; I < ColTabSize; I++)
     {
@@ -867,7 +1412,30 @@ bool OptimizeByColor()
         ScrLo[I] = Tmp;
         ScrRAM[I] = (ScrHi[I] * 16) + ScrLo[I];
     }
+/*
+    int FreqTab[256]{};
 
+    for (int i = 0; i < ColTabSize; i++)
+    {
+        FreqTab[ScrRAM[i]]++;
+    }
+
+    for (int i = 0; i < 256; i++)
+    {
+        int ii = (i / 16) + ((i % 16) * 16);
+        if ((i != ii) && (FreqTab[i] != 0) && (FreqTab[ii] != 0))
+        {
+            for (int j = 0; j < ColTabSize; j++)
+            {
+                if (ScrRAM[j] == (unsigned char)ii)
+                {
+                    ScrRAM[j] = i;
+                    FreqTab[ii]--;
+                }
+            }     
+        }
+    }
+*/
     //----------------------------------------------------------------------------
     //Rebuild the image
     //----------------------------------------------------------------------------
@@ -1884,8 +2452,8 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/test/a.kla";
-        OutFile = "c:/spot/test/ak";
+        InFile = "c:/spot/test/b.kla";
+        OutFile = "c:/spot/test/bk";
         CmdOptions = "k";
         CmdColors = "x";
 #else
