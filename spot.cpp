@@ -1536,7 +1536,7 @@ bool OptimizeImage()
             {
                 for (int BX = 0; BX < 4; BX++)          //Pixel's X-position within char
                 {
-                    int PicPos = CP + (BY * PicW) + BX;
+                    int PicPos = min(CP + (BY * PicW) + BX, (PicW * PicH) - 1); //This min() function is only needed to avoid error message in VS
                     unsigned char V = Pic[PicPos];      //Fetch R value of pixel in char
 
                     int CharIndex = (CY * CharCol) + CX;
@@ -2249,11 +2249,11 @@ void ShowHelp()
     cout << "         2 - .ccr (compressed color RAM data)\n";
     cout << "         o - .obm (optimized bitmap - 9503 bytes)\n";
     cout << "         This parameter is optional. If omitted, then the default Koala file will be created.\n\n";
-    cout << "bgcolor: Output background color(s): 0123456789abcdef or 'x'. SPOT will only create C64 files using the selected\n";
-    cout << "         background color(s). If 'x' is used as value then only the first possible background color will be used,\n";
+    cout << "bgcolor: Output background color(s): 0123456789abcdef or x. SPOT will only create C64 files using the selected\n";
+    cout << "         background color(s). If x is used as value then only the first possible background color will be used,\n";
     cout << "         all other possible background colors will be ignored. If this option is omitted, then SPOT will generate\n";
     cout << "         output files using all possible background colors. If more than one background color is possible (and\n";
-    cout << "         allowed) then SPOT will append the background colorto the output file name.\n\n";
+    cout << "         allowed) then SPOT will append the background color to the output file name.\n\n";
     cout << "Examples\n";
     cout << "--------\n\n";
     cout << "spot picture.bmp -o newfolder/newfile -f msc -b 0\n";

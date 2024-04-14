@@ -132,6 +132,8 @@ void UncoverLines()
 
 	for (int r = 0; r < rows; r++)
 	{
+		CoveredRows[r] = 0;
+
 		for (int c = 0; c < cols; c++)
 		{
 			amatrix[r][c] = 0;
@@ -139,10 +141,10 @@ void UncoverLines()
 		}
 	}
 
-	for (int r = 0; r < rows; r++)
-	{
-		CoveredRows[r] = 0;
-	}
+	//for (int r = 0; r < rows; r++)
+	//{
+		//CoveredRows[r] = 0;
+	//}
 
 	for (int c = 0; c < cols; c++)
 	{
@@ -172,9 +174,9 @@ void AssignZerosAndCoverColumns()
 				{
 					NumCovered++;			//Count covered lines
 
-					CoveredCols[c] = 1;		//build CoveredCol array
-					CoveredRows[r] = 1;
-					amatrix[r][c] = 1;		//build assigned matrix
+					CoveredCols[c] = 1;		//Build CoveredCols array
+					//CoveredRows[r] = 1;
+					amatrix[r][c] = 1;		//Build assigned matrix
 
 					break;
 				}
@@ -182,8 +184,8 @@ void AssignZerosAndCoverColumns()
 		}
 	}
 
-	for (int r = 0; r < rows; r++)
-		CoveredRows[r] = 0;
+	//for (int r = 0; r < rows; r++)		//Not needed if we don't set CoveredRows values to 1 above...
+		//CoveredRows[r] = 0;
 
 	//ShowMatrix();
 }
@@ -203,10 +205,11 @@ void CreateNewZeros()
 			for (int c = 0; c < cols; c++)
 				if (CoveredCols[c] == 0)
 				{
-					if (MinVal > matrix[r][c])
-					{
-						MinVal = matrix[r][c];
-					}
+					MinVal = min(matrix[r][c], MinVal);
+					//if (MinVal > matrix[r][c])
+					//{
+						//MinVal = matrix[r][c];
+					//}
 				}
 
 	for (int r = 0; r < rows; r++)
