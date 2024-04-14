@@ -42,6 +42,8 @@ unsigned char* ColTab0, * ColTab1, * ColTab2, * ColTab3;
 unsigned char* Pic, * PicMsk;       //Original picture array
 unsigned char* BMP;                 //C64 bitmap array
 
+unsigned char* ColRAM, * ScrHi, * ScrLo, * ScrRAM, * ColMap, * BGC;
+
 typedef struct tagBITMAPINFOHEADER {
     int32_t biSize;
     int32_t biWidth;
@@ -425,7 +427,6 @@ bool SaveImgFormat()
 
 bool OptimizeByColor()
 { 
-    unsigned char* ColRAM, * ScrHi, * ScrLo, * ScrRAM, * ColMap, * BGC;
     ScrHi = new unsigned char[ColTabSize] {};
     ScrLo = new unsigned char[ColTabSize] {};
     ScrRAM = new unsigned char[ColTabSize] {};
@@ -637,9 +638,11 @@ bool OptimizeByColor()
         }
     }
 
+    //Move single blocks if there are adjacent blocks with same color in another color space
+
     for (int I = 1; I < ColTabSize - 1; I++)
     {
-        if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]))// && (ScrHi[I] != 255))// && (ScrHi[I + 1] != 255))
+        if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]) && (ScrHi[I] != 255))// && (ScrHi[I + 1] != 255) && (ScrHi[I - 1] != 255))
         {
             if (((ScrLo[I] == 255) && (ScrLo[I - 1] == ScrHi[I])) || ((ScrLo[I] == 255) && (ScrLo[I + 1] == ScrHi[I])))
             {
@@ -653,7 +656,7 @@ bool OptimizeByColor()
             }
         }
 
-        if ((ScrLo[I] != ScrLo[I - 1]) && (ScrLo[I] != ScrLo[I + 1]))// && (ScrLo[I] != 255))// && (ScrLo[I + 1] != 255))
+        if ((ScrLo[I] != ScrLo[I - 1]) && (ScrLo[I] != ScrLo[I + 1]) && (ScrLo[I] != 255))// && (ScrLo[I + 1] != 255) && (ScrLo[I - 1] != 255))
         {
             if (((ColRAM[I] == 255) && (ColRAM[I - 1] == ScrLo[I])) || ((ColRAM[I] == 255) && (ColRAM[I + 1] == ScrLo[I])))
             {
@@ -667,7 +670,7 @@ bool OptimizeByColor()
             }
         }
 
-        if ((ColRAM[I] != ColRAM[I - 1]) && (ColRAM[I] != ColRAM[I + 1]))// && (ColRAM[I] != 255))// && (ColRAM[I + 1] != 255))
+        if ((ColRAM[I] != ColRAM[I - 1]) && (ColRAM[I] != ColRAM[I + 1]) && (ColRAM[I] != 255))// && (ColRAM[I + 1] != 255) && (ColRAM[I - 1] != 255))
         {
             if (((ScrHi[I] == 255) && (ScrHi[I - 1] == ColRAM[I])) || ((ScrHi[I] == 255) && (ScrHi[I + 1] == ColRAM[I])))
             {
@@ -683,141 +686,9 @@ bool OptimizeByColor()
     }
 
     //----------------------------------------------------------------------------
+    // Fill unused blocks
+    //----------------------------------------------------------------------------
 
-    //Find loner bytes that can be swapped - this doesn't seem to help...
-/*
-    for (int I = 1; I < ColTabSize - 1; I++)
-    {
-        if (I == 20 * 40 + 24)
-        {
-            I += 0;
-        }
-        bool Chg = false;
-        if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]) && (ScrHi[I] != 255))
-        {
-            if (ScrHi[I] == ScrLo[I + 1])
-            {
-                if ((ScrLo[I] != ScrLo[I - 1]))
-                {
-                    ScrHi[I] = ScrLo[I];
-                    ScrLo[I] = ScrLo[I + 1];
-                    Chg = true;
-                }
-            }
-            else if (ScrHi[I] == ScrLo[I - 1])
-            {
-                if ((ScrLo[I] != ScrLo[I + 1]))
-                {
-                    ScrHi[I] = ScrLo[I];
-                    ScrLo[I] = ScrLo[I - 1];
-                    Chg = true;
-                }
-            }
-            else if (ScrHi[I] == ColRAM[I + 1])
-            {
-                if ((ColRAM[I] != ColRAM[I - 1]))
-                {
-                    ScrHi[I] = ColRAM[I];
-                    ColRAM[I] = ColRAM[I + 1];
-                    Chg = true;
-                }
-            }
-            else if (ScrHi[I] == ColRAM[I - 1])
-            {
-                if ((ColRAM[I] != ColRAM[I + 1]))
-                {
-                    ScrHi[I] = ColRAM[I];
-                    ColRAM[I] = ColRAM[I - 1];
-                    Chg = true;
-                }
-            }
-        }
-
-        if ((ScrLo[I] != ScrLo[I - 1]) && (ScrLo[I] != ScrLo[I + 1]) && (ScrLo[I] != 255))
-        {
-            if (ScrLo[I] == ScrHi[I + 1])
-            {
-                if ((ScrHi[I] != ScrHi[I - 1]))
-                {
-                    ScrLo[I] = ScrHi[I];
-                    ScrHi[I] = ScrHi[I + 1];
-                    Chg = true;
-                }
-            }
-            else if (ScrLo[I] == ScrHi[I - 1])
-            {
-                if ((ScrHi[I] != ScrHi[I + 1]))
-                {
-                    ScrLo[I] = ScrHi[I];
-                    ScrHi[I] = ScrHi[I - 1];
-                    Chg = true;
-                }
-            }
-            else if (ScrLo[I] == ColRAM[I + 1])
-            {
-                if ((ColRAM[I] != ColRAM[I - 1]))
-                {
-                    ScrLo[I] = ColRAM[I];
-                    ColRAM[I] = ColRAM[I + 1];
-                    Chg = true;
-                }
-            }
-            else if (ScrLo[I] == ColRAM[I - 1])
-            {
-                if ((ColRAM[I] != ColRAM[I + 1]))
-                {
-                    ScrLo[I] = ColRAM[I];
-                    ColRAM[I] = ColRAM[I - 1];
-                    Chg = true;
-                }
-            }
-        }
-
-        if ((ColRAM[I] != ColRAM[I - 1]) && (ColRAM[I] != ColRAM[I + 1]) && (ColRAM[I] != 255))
-        {
-            if (ColRAM[I] == ScrLo[I + 1])
-            {
-                if ((ScrLo[I] != ScrLo[I - 1]))
-                {
-                    ColRAM[I] = ScrLo[I];
-                    ScrLo[I] = ScrLo[I + 1];
-                    Chg = true;
-                }
-            }
-            else if (ColRAM[I] == ScrLo[I - 1])
-            {
-                if ((ScrLo[I] != ScrLo[I + 1]))
-                {
-                    ColRAM[I] = ScrLo[I];
-                    ScrLo[I] = ScrLo[I - 1];
-                    Chg = true;
-                }
-            }
-            else if (ColRAM[I] == ScrHi[I + 1])
-            {
-                if ((ScrHi[I] != ScrHi[I - 1]))
-                {
-                    ColRAM[I] = ScrHi[I];
-                    ScrHi[I] = ScrHi[I + 1];
-                    Chg = true;
-                }
-            }
-            else if (ColRAM[I] == ScrHi[I - 1])
-            {
-                if ((ScrHi[I] != ScrHi[I + 1]))
-                {
-                    ColRAM[I] = ScrHi[I];
-                    ScrHi[I] = ScrHi[I - 1];
-                    Chg = true;
-                }
-            }
-        }
-        if (Chg)
-        {
-            I--;
-        }
-    }
-*/
     if (ColRAM[0] == 255)
     {
         ColRAM[0] = 0;      //In case the whole array remained unused
@@ -1308,13 +1179,13 @@ bool OptimizeByColor()
             }
         }
     }
-/*
+
     for (int i = 1; i < ColTabSize - 1; i++)
     {
         bool Chg = false;
         if ((ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]) && (ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]))
         {
-            if ((ScrHi[i] == ScrLo[i - 1]) || (ScrHi[i] == ScrLo[i + 1]))
+            if ((ScrHi[i] == ScrLo[i - 1]) || (ScrLo[i] == ScrHi[i - 1]))
             {
                 unsigned char Tmp = ScrLo[i];
                 ScrLo[i] = ScrHi[i];
@@ -1325,7 +1196,7 @@ bool OptimizeByColor()
 
         if ((ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]) && (ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]))
         {
-            if ((ScrHi[i] == ColRAM[i - 1]) || (ScrHi[i] == ColRAM[i + 1]))
+            if ((ScrHi[i] == ColRAM[i - 1]) || (ColRAM[i] == ScrHi[i - 1]))
             {
                 unsigned char Tmp = ColRAM[i];
                 ColRAM[i] = ScrHi[i];
@@ -1336,44 +1207,11 @@ bool OptimizeByColor()
 
         if ((ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]) && (ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]))
         {
-            if ((ScrLo[i] == ColRAM[i - 1]) || (ScrLo[i] == ColRAM[i + 1]))
+            if ((ScrLo[i] == ColRAM[i - 1]) || (ColRAM[i] == ScrLo[i - 1]))
             {
                 unsigned char Tmp = ColRAM[i];
                 ColRAM[i] = ScrLo[i];
                 ScrLo[i] = Tmp;
-                Chg = true;
-            }
-        }
-
-        if ((ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]) && (ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]))
-        {
-            if ((ScrLo[i] == ScrHi[i - 1]) || (ScrLo[i] == ScrHi[i + 1]))
-            {
-                unsigned char Tmp = ScrHi[i];
-                ScrHi[i] = ScrLo[i];
-                ScrLo[i] = Tmp;
-                Chg = true;
-            }
-        }
-
-        if ((ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]) && (ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]))
-        {
-            if ((ScrLo[i] == ColRAM[i - 1]) || (ScrLo[i] == ColRAM[i + 1]))
-            {
-                unsigned char Tmp = ColRAM[i];
-                ColRAM[i] = ScrLo[i];
-                ScrLo[i] = Tmp;
-                Chg = true;
-            }
-        }
-
-        if ((ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]) && (ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]))
-        {
-            if ((ScrHi[i] == ColRAM[i - 1]) || (ScrHi[i] == ColRAM[i + 1]))
-            {
-                unsigned char Tmp = ColRAM[i];
-                ColRAM[i] = ScrHi[i];
-                ScrHi[i] = Tmp;
                 Chg = true;
             }
         }
@@ -1383,7 +1221,8 @@ bool OptimizeByColor()
             i--;
         }
     }
-*/
+
+/*
     int NumSeq0{}, NumSeq1{}, NumSeq2{};
     
     for (int i = 0; i < ColTabSize - 1; i++)
@@ -1402,8 +1241,8 @@ bool OptimizeByColor()
         }
     }
 
-    //cout << NumSeq0 << "\t" << NumSeq1 << "\t" << NumSeq2 << "\n";
-
+    cout << NumSeq0 << "\t" << NumSeq1 << "\t" << NumSeq2 << "\n";
+*/
     //Combine screen RAM high and low nibbles
     for (int I = 0; I < ColTabSize; I++)
     {
