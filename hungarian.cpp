@@ -338,16 +338,16 @@ void CoverLines()
 									Flipped0 = true;
 									break;
 									//We will exit both [c] and [r] for loops and the ((Found0) && (!Flipped0) while loop too
-								}
-							}
-						}
-					}
-				}
+								}//end if
+							}//end if
+						}//end if
+					}//next r
+				}//end if
 				//We exit both for loops if (Flipped0), but only the inner loop if (Found0)
 				if (Flipped0)
 					break;
-			}
-		}
+			}//next c
+		}//end while
 
 		if (!Flipped0)
 		{
@@ -358,7 +358,7 @@ void CoverLines()
 			//->uncover all lines, clear amatrix and pmatrix
 			//->assign 0s and cover columns, calculate NumCovered
 		}	//end if (!Flipped0)
-	}
+	}//end while
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------

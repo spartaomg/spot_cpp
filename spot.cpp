@@ -1,4 +1,10 @@
 
+//new since v 1.2
+//option g for switch -f to save background color as a 1-byte *.bgc file 
+//option x for switch -b to only create files using the first detected background color
+//Hungarian algorithm to identify best palette match if no direct match found
+//improved optimization (saves 54 bytes on the test corpus with Dali compared with v1.2)
+
 #include "common.h"
 
 //#define DEBUG
@@ -104,6 +110,8 @@ string PaletteNames[NP]{
 "VICE 3.8 PALette", "VICE 3.8 PALette 6569R1", "VICE 3.8 PALette 6569R5", "VICE 3.8 PALette 8565R2", "VICE 3.8 PC64", "VICE 3.8 Pepto NTSC Sony", "VICE 3.8 Pepto NTSC", "VICE 3.8 Pepto PAL",
 "VICE 3.8 Pepto PAL Old", "VICE 3.8 Pixcen", "VICE 3.8 Ptoing", "VICE 3.8 RGB", "VICE 3.8 VICE Original", "VICE 3.8 VICE Internal", "Pixcen Colodore"
 };
+
+int VICE_36_Pixcen = 18;    //VICE 3.6 Pixcen
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -291,7 +299,9 @@ double YUVDistance(yuv YUV1, yuv YUV2)
     double dU = YUV1.U - YUV2.U;
     double dV = YUV1.V - YUV2.V;
 
-    return dY * dY + dU * dU + dV * dV;
+    double YUVD = dY * dY + dU * dU + dV * dV;
+
+    return YUVD;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1748,8 +1758,8 @@ bool ConvertPicToC64Palette()
         }
     }
 
-    int* BestPalette;
-    BestPalette = new int[NumPalettes] {};
+    //int* BestPalette;
+    //BestPalette = new int[NumPalettes] {};
 
     unsigned int ThisPalette[16]{};
     for (int i = 0; i < 16; i++)
@@ -1838,7 +1848,7 @@ bool ConvertPicToC64Palette()
                 {
                     if (c64palettes[(PaletteIdx * 16) + i] == ThisCol)
                     {
-                        int DefaultColor = c64palettes[18 * 16 + i];  //Use Pixcen palette because paletteconvtab works with that one.
+                        int DefaultColor = c64palettes[VICE_36_Pixcen * 16 + i];  //Use Pixcen palette because paletteconvtab works with that one.
                         SetColor(C64Bitmap, (x * 2), y, DefaultColor);
                         SetColor(C64Bitmap, (x * 2) + 1, y, DefaultColor);
                     }
@@ -1907,7 +1917,7 @@ bool ConvertPicToC64Palette()
                     if (ThisPalette[i] == ThisCol)  //Find the index of the color in ThisPalette
                     {
                         int ColorIndex = BestColorIdx[i];
-                        unsigned int DefaultColor = c64palettes[18 * 16 + ColorIndex]; //Identify the color in the Best Match Palette
+                        unsigned int DefaultColor = c64palettes[VICE_36_Pixcen * 16 + ColorIndex]; //Identify the color in the Best Match Palette
 
                         SetColor(C64Bitmap, (x * 2), y, DefaultColor);
                         SetColor(C64Bitmap, (x * 2) + 1, y, DefaultColor);
@@ -1917,7 +1927,7 @@ bool ConvertPicToC64Palette()
         }
     }
 
-    delete[] BestPalette;
+    //delete[] BestPalette;
 
     return OptimizeImage(); //
 
@@ -2203,7 +2213,7 @@ bool ImportFromKoala()
 
             //color C64Color{ oldc64palettes[Col], oldc64palettes[Col + 16], oldc64palettes[Col + 32],0 };
 
-            int C64Col = c64palettes[18 * 16 + Col];
+            int C64Col = c64palettes[VICE_36_Pixcen * 16 + Col];
 
             color C64Color{ (unsigned char)((C64Col >> 16) & 0xff),(unsigned char)((C64Col >> 8) & 0xff),(unsigned char)(C64Col & 0xff) };
 
@@ -2230,7 +2240,7 @@ void ShowHelp()
     cout << "screen RAM (.scr), color RAM (.col), compressed color RAM (.ccr)*, and optimized bitmap (.obm)**.\n\n";
     cout << "*Compressed color RAM (.ccr) format: two adjacent half bytes are combined to reduce the size of the color RAM to\n";
     cout << "500 bytes.\n\n";
-    cout << "**Optimized bitmap (.obm) format: bitmap info is stored column wise. Screen RAM and compressed color RAM stored\n";
+    cout << "**Optimized bitmap (.obm) format: bitmap data is stored column wise. Screen RAM and compressed color RAM stored\n";
     cout << "row wise. First two bytes are address bytes ($00, $60) and the last one is the background color as in the Koala format.\n";
     cout << "File size: 9503 bytes. In most cases, this format compresses somewhat better than Koala but it also needs a more\n";
     cout << "complex display routine.\n\n";
@@ -2270,8 +2280,8 @@ void ShowHelp()
     cout << "output to the <spot/picture> folder using <picture> as output base filename\n\n";
     cout << "Notes\n";
     cout << "-----\n\n";
-    cout << "SPOT recognizes several C64 palettes. If a palette match is not found then it will attempt to convert colors to\n";
-    cout << "a standard C64 palette.\n\n";
+    cout << "SPOT recognizes several C64 palettes. If an exact palette match is not found then it will convert colors to\n";
+    cout << "a standard C64 palette using a lowest-cost algorithm.\n\n";
     cout << "SPOT can handle non-standard image sizes (such as the vertical bitmap in Memento Mori and the diagonal bitmap\n";
     cout << "in Christmas Megademo). When a .kla or .obm file is created from a non-standard sized image, SPOT takes a centered\n";
     cout << "\"snapshot\" of the image and saves that as .kla or .obm. Map, screen RAM, and color RAM files can be of any size.\n\n";
@@ -2291,8 +2301,8 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/test/b.kla";
-        OutFile = "c:/spot/test/bk";
+        InFile = "c:/spot/test/a_s.png";
+        OutFile = "c:/spot/test/a_s";
         CmdOptions = "k";
         CmdColors = "x";
 #else
