@@ -95,8 +95,8 @@ struct yuv {
 static const int NP = 63;
 yuv c64palettesYUV[NP*16]{};
 
-const int rows = 16;
-const int cols = 16;
+//const int rows = 16;
+//const int cols = 16;
 
 int minSumIndices[16]{};
 
