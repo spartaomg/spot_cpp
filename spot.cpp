@@ -1,13 +1,59 @@
 
-//new since v 1.2
+//new in v1.3
 //option g for switch -f to save background color as a 1-byte *.bgc file 
 //option x for switch -b to only create files using the first detected background color
 //Hungarian algorithm to identify best palette match if no direct match found
 //improved optimization (saves 54 bytes on the test corpus with Dali compared with v1.2)
 
+//new in v1.4
+//new optimization algorithm based on average color fragment length instead of color frequency to predict optimal color placement
+//improved overlap correction
+//SPOT now checks 8^4 variations and selects candidates for best compression based on the number of color fragments and color combinations,
+//then passes them through a simple compression cost calculator to select the one that compresses best as final output
+//total gain is 721 bytes vs. SPOT 1.3 and 246 bytes vs. P2P 1.8's overall best result in Burglar's benchmark
+//new switch -v for verbose mode
+//new switch -s for simple/speedy mode - bypasses multiple output candidate creation and analysis - helpful in case of huge, non-standard images
+//accept VICE 384x272px PNG screenshots as input
+
 #include "common.h"
 
 //#define DEBUG
+
+const int VICE_PicW = 384 / 2;
+const int VICE_PicH = 272;
+
+vector <int> Predictors;
+
+struct colorspace
+{
+    double SeqLen;          //Average sequence length
+    double UnusedLen;       //Average length between sequences
+    double Compactness;
+    unsigned char Color;
+    int OverlapWithSH;
+    int OverlapWithSL;
+    int OverlapWithCR;
+    bool Used;
+};
+
+vector <colorspace> ColorSpace(16);
+
+vector<unsigned char> arrBMP;
+
+vector<vector <unsigned char>> vecBMP{ arrBMP };
+
+bool VerboseMode = false;
+bool OnePassMode = false;
+
+int BitmapFrag[256]{};
+int BmpFrag = 0;
+
+int BestNumFrag{};
+int BestNumFragCol{};
+
+unsigned char PreferredFirst[16]{}, PreferredSecond[16]{}, PreferredThird[16]{};
+
+int ThisCompress = 0;
 
 int PrgLen = 0;
 string InFile{}, OutFile{};
@@ -35,20 +81,38 @@ bool OutputBgc = false;
 
 int NumBGCols = -1;
 unsigned char BGCol, BGCols[16]{};  //Background color
-unsigned char UnusedColor = 0x10;
+const unsigned char UnusedColor = 0x10;
 
 vector <unsigned char> ImgRaw;      //raw PNG/BMP/Koala
 vector <unsigned char> Image;       //pixels in RGBA format (4 bytes per pixel)
 vector <unsigned char> C64Bitmap;
 
-unsigned char MUC[16]{};
+unsigned char MUCSeq[16]{};
+unsigned char MUCCol[16]{};
+unsigned char MUCMed[16]{};
+unsigned char MUCDen[16]{};
 
 int ColTabSize = 0;
+
+//--------------------------------------
+//  TODO: REPLACE ARRAYS WITH VECTORS
+//--------------------------------------
+
 unsigned char* ColTab0, * ColTab1, * ColTab2, * ColTab3;
 unsigned char* Pic, * PicMsk;       //Original picture array
 unsigned char* BMP;                 //C64 bitmap array
 
-unsigned char* ColRAM, * ScrHi, * ScrLo, * ScrRAM, * ColMap, * BGC;
+unsigned char* ColR, * ColRAM, * ScrHi, * ScrLo, * ScrRAM, * ColMap, * BGC;
+
+unsigned char* ColRAMCol, * ScrHiCol, * ScrLoCol;
+
+typedef struct tagBITMAPFILEHEADER {
+    int16_t bfType;
+    int32_t bfSize;
+    int16_t bfReserved1;
+    int16_t bfReserved2;
+    int32_t bfOffBits;
+} BITMAPFILEHEADER, * LPBITMAPFILEHEADER, * PBITMAPFILEHEADER;
 
 typedef struct tagBITMAPINFOHEADER {
     int32_t biSize;
@@ -92,11 +156,8 @@ struct yuv {
     double V;
 };
 
-static const int NP = 63;
+static const int NP = 64;
 yuv c64palettesYUV[NP*16]{};
-
-//const int rows = 16;
-//const int cols = 16;
 
 int minSumIndices[16]{};
 
@@ -108,7 +169,7 @@ string PaletteNames[NP]{
 "VICE 3.6 RGB CRT", "VICE 3.6 ChristopherJam CRT", "VICE 3.6 Deekay CRT", "VICE 3.6 PALette CRT", "VICE 3.6 Ptoing CRT", "VICE 3.6 Community Colors CRT", "VICE 3.6 Pixcen CRT", "VICE 3.8 C64HQ",
 "VICE 3.8 C64S", "VICE 3.8 CCS64", "VICE 3.8 ChristopherJam", "VICE 3.8 Colodore", "VICE 3.8 Community Colors", "VICE 3.8 Deekay", "VICE 3.8 Frodo", "VICE 3.8 Godot",
 "VICE 3.8 PALette", "VICE 3.8 PALette 6569R1", "VICE 3.8 PALette 6569R5", "VICE 3.8 PALette 8565R2", "VICE 3.8 PC64", "VICE 3.8 Pepto NTSC Sony", "VICE 3.8 Pepto NTSC", "VICE 3.8 Pepto PAL",
-"VICE 3.8 Pepto PAL Old", "VICE 3.8 Pixcen", "VICE 3.8 Ptoing", "VICE 3.8 RGB", "VICE 3.8 VICE Original", "VICE 3.8 VICE Internal", "Pixcen Colodore"
+"VICE 3.8 Pepto PAL Old", "VICE 3.8 Pixcen", "VICE 3.8 Ptoing", "VICE 3.8 RGB", "VICE 3.8 VICE Original", "VICE 3.8 VICE Internal", "Pixcen Colodore","C64GFX.COM PEPTOette"
 };
 
 int VICE_36_Pixcen = 18;    //VICE 3.6 Pixcen
@@ -324,9 +385,9 @@ yuv RGB2YUV(int RGBColor)
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool SetColor(std::vector<unsigned char>& Img, size_t X, size_t Y, int Col)
+bool SetColor(std::vector<unsigned char>& Img, size_t X, size_t Y, size_t PicWidth, int Col)
 {
-    size_t Pos = (Y * (size_t)PicW * 2 * 4) + (X * 4);
+    size_t Pos = (Y * (size_t)PicWidth * 2 * 4) + (X * 4);
 
     if (Pos + 3 > Img.size())
         return false;
@@ -341,18 +402,18 @@ bool SetColor(std::vector<unsigned char>& Img, size_t X, size_t Y, int Col)
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-unsigned int GetColor(std::vector<unsigned char>& Img, size_t X, size_t Y)
+unsigned int GetColor(std::vector<unsigned char>& Img, size_t X, size_t Y, size_t PicWidth)
 {
-    size_t Pos = (Y * (size_t)PicW * 2 * 4) + (X * 4);
+    size_t Pos = (Y * (size_t)PicWidth * 2 * 4) + (X * 4);
 
     return (Img[Pos + 0] << 16) + (Img[Pos + 1] << 8) + Img[Pos + 2];
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool SetPixel(std::vector<unsigned char>& Img,size_t X, size_t Y, color Col)
+bool SetPixel(std::vector<unsigned char>& Img,size_t X, size_t Y, size_t PicWidth, color Col)
 {
-    size_t Pos = (Y * (size_t)PicW * 2 * 4) + (X * 4);
+    size_t Pos = (Y * (size_t)PicWidth * 2 * 4) + (X * 4);
 
     if (Pos + 3 > Img.size())
         return false;
@@ -367,9 +428,9 @@ bool SetPixel(std::vector<unsigned char>& Img,size_t X, size_t Y, color Col)
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-color GetPixel(std::vector<unsigned char>& Img, size_t X, size_t Y)
+color GetPixel(std::vector<unsigned char>& Img, size_t X, size_t Y, size_t PicWidth)
 {
-    size_t Pos = (Y * (size_t)PicW * 2 * 4) + (X * 4);
+    size_t Pos = (Y * (size_t)PicWidth * 2 * 4) + (X * 4);
 
     color Col{};
 
@@ -383,11 +444,81 @@ color GetPixel(std::vector<unsigned char>& Img, size_t X, size_t Y)
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
+bool SaveBmp()
+{
+    BITMAPFILEHEADER bfh{}; //0x0e bytes
+
+    int SizeOfBfh = sizeof(bfh.bfType) + sizeof(bfh.bfSize) + sizeof(bfh.bfReserved1) + sizeof(bfh.bfReserved2) + sizeof(bfh.bfOffBits);    //=14
+
+    //sizeof(bfh) = 16 for some reason and bfType takes 4 bytes instead of 2, so we need a workaround
+
+    bfh.bfType = 0x4d42;
+    bfh.bfOffBits = SizeOfBfh + sizeof(tagBITMAPINFOHEADER) + 0x40;
+    bfh.bfSize = 320 * 200 / 2 + bfh.bfOffBits;
+    bfh.bfReserved1 = 0;
+    bfh.bfReserved2 = 0;
+
+    BITMAPINFOHEADER bih{}; //0x28 bytes
+
+    bih.biSize = sizeof(tagBITMAPINFOHEADER);
+    bih.biWidth = 320;
+    bih.biHeight = 200;
+    bih.biPlanes = 1;
+    bih.biBitCount = 4;
+    bih.biCompression = 0;
+    bih.biSizeImage = 0;
+    bih.biXPelsPerMeter = 0xec4;
+    bih.biYPelsPerMeter = 0xec4;
+    bih.biClrUsed = 16;
+    bih.biClrImportant = 16;
+
+    //Pixcen Palette
+    const int c64palette_size = 16;
+    unsigned int BmpPalette[c64palette_size] = { 0xff000000, 0xffffffff, 0xff894036, 0xff7abfc7, 0xff8a46ae, 0xff68a941, 0xff3e31a2, 0xffd0dc71, 0xff905f25, 0xff5c4700, 0xffbb776d, 0xff555555, 0xff808080, 0xffacea88, 0xff7c70da, 0xffababab };
+    
+    unsigned char* BmpOut;
+    BmpOut = new unsigned char[bfh.bfSize] {};
+
+    //memcpy(&BmpOut[0], &bfh, sizeof(bfh));    //this would copy 16 bytes instead of 14...
+    memcpy(&BmpOut[0], &bfh.bfType, sizeof(bfh.bfType));
+    memcpy(&BmpOut[2], &bfh.bfSize, sizeof(bfh.bfSize));
+    memcpy(&BmpOut[6], &bfh.bfReserved1, sizeof(bfh.bfReserved1));
+    memcpy(&BmpOut[8], &bfh.bfReserved2, sizeof(bfh.bfReserved2));
+    memcpy(&BmpOut[10], &bfh.bfOffBits, sizeof(bfh.bfOffBits));
+    memcpy(&BmpOut[SizeOfBfh], &bih, sizeof(bih));
+    memcpy(&BmpOut[SizeOfBfh + sizeof(bih)], &BmpPalette, sizeof(BmpPalette));
+
+    for (int y = 0; y < 200; y++)
+    {
+        for (int x = 0; x < 160; x++)
+        {
+            unsigned int ThisCol = GetColor(C64Bitmap, x * 2, y, 160) + 0xff000000;
+            for (int i = 0; i < 16; i++)
+            {
+                if (ThisCol == BmpPalette[i])
+                {
+                    BmpOut[bfh.bfOffBits + (199 - y) * 160 + x] = i * 16 + i;
+                    break;
+                }
+            }
+        }
+    }
+
+    bool WriteReturn = WriteBinaryFile(OutFile + ".bmp", BmpOut, bfh.bfSize);
+
+    delete[] BmpOut;
+
+    return WriteReturn;
+
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
 bool SaveImgFormat()
 {
-    if (OutputPng == 1)
+    if ((OutputPng == 1) ||(OutputBmp == 1))
     {
-        //Save PNG
+        //Save PNG or BMP
 
         if (OutFile.empty())
         {
@@ -418,7 +549,10 @@ bool SaveImgFormat()
 #endif
             DiskDir += OutFile[i];
         }
-
+    }
+    
+    if (OutputPng == 1)
+    {
         cout << "Writing " + OutFile + ".png...\n";
 
         unsigned int error = lodepng::encode(OutFile + ".png", Image, PicW * 2, PicH);
@@ -430,333 +564,1000 @@ bool SaveImgFormat()
         }
     }
     
+    if (OutputBmp == 1)
+    {
+        //cout << "Writing " + OutFile + ".bmp...\n";
+
+        bool SaveReturn = SaveBmp();
+        if (!SaveReturn)
+        {
+            cout << "Error during encoding and saving BMP.\n";
+            return false;
+        }
+    }
     return true;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool OptimizeByColor()
-{ 
-    ScrHi = new unsigned char[ColTabSize] {};
-    ScrLo = new unsigned char[ColTabSize] {};
-    ScrRAM = new unsigned char[ColTabSize] {};
-    ColRAM = new unsigned char[ColTabSize] {};
-    BGC = new unsigned char[1];
-    ColMap = new unsigned char[16 * ColTabSize] {};         //We still have UnusedColor = 16 here, so we need an extra map!!!
+void CreateBitmapData()
+{
+    //----------------------------------------------------------------------------
+    //Rebuild the image
+    //----------------------------------------------------------------------------
 
-    int C64Col[17]{};       //0x00-0x10 (UnusedColor = 0x10)
+    unsigned char Col1{}, Col2{}, Col3{};
 
-    for (int I = 0; I < ColTabSize; I++)
+    //Replace C64 colors with respective bit pairs
+    for (int CY = 0; CY < CharRow; CY++)
     {
-        ColRAM[I] = 255;                                    //Reset color spaces
-        ScrHi[I] = 255;
-        ScrLo[I] = 255;
-
-        C64Col[ColTab1[I]]++;                               //Calculate frequency of colors
-        C64Col[ColTab2[I]]++;
-        C64Col[ColTab3[I]]++;
-        if (ColTab1[I] != UnusedColor)
+        for (int CX = 0; CX < CharCol; CX++)
         {
-            ColMap[(ColTab1[I] * ColTabSize) + I] = 255;       //Create a separate color map for each color, avoiding UnusedColor
-        }
-        if (ColTab2[I] != UnusedColor)
-        {
-            ColMap[(ColTab2[I] * ColTabSize) + I] = 255;
-        }
-        if (ColTab3[I] != UnusedColor)
-        {
-            ColMap[(ColTab3[I] * ColTabSize) + I] = 255;
-        }
-    }
-
-    for (int I = 0; I < 16; I++)
-    {
-        MUC[I] = I;                         //Initialize most used color ranklist
-    }
-
-    bool Chg = true;
-
-    while (Chg == true)
-    {
-        Chg = false;
-        for (int I = 0; I < 15; I++)        //Sort colors based on frequency
-        {
-            if (C64Col[I] < C64Col[I + 1])
+            int CharIndex = (CY * CharCol) + CX;
+            Col1 = ScrHi[CharIndex];        //Fetch colors from tabs
+            Col2 = ScrLo[CharIndex];
+            Col3 = ColR[CharIndex];
+            for (int BY = 0; BY < 8; BY++)
             {
-                int Tmp = C64Col[I];
-                C64Col[I] = C64Col[I + 1];
-                C64Col[I + 1] = Tmp;
-                Tmp = MUC[I];
-                MUC[I] = MUC[I + 1];
-                MUC[I + 1] = Tmp;
-                Chg = true;
+                for (int BX = 0; BX < 4; BX++)
+                {
+                    //Calculate pixel position in array
+                    int CP = (CY * PicW * 8) + (CX * 4) + (BY * PicW) + BX;
+                    if (Pic[CP] == BGCol)
+                    {
+                        PicMsk[CP] = 0;
+                    }
+                    else if (Pic[CP] == Col1)
+                    {
+                        PicMsk[CP] = 1;
+                    }
+                    else if (Pic[CP] == Col2)
+                    {
+                        PicMsk[CP] = 2;
+                    }
+                    else if (Pic[CP] == Col3)
+                    {
+                        PicMsk[CP] = 3;
+                    }
+                }
             }
         }
     }
 
-    for (int I = 0; I < ColTabSize; I++)
+    arrBMP.resize(((size_t)ColTabSize * 10) + 1);
+
+    //Finally, convert bit pairs to final bitmap
+    for (int CY = 0; CY < CharRow; CY++)
     {
-        //Most used color goes to ScrHi
-        if ((ColTab1[I] == MUC[0]) || (ColTab2[I] == MUC[0]) || (ColTab3[I] == MUC[0]))
+        for (int CX = 0; CX < CharCol; CX++)
         {
-            ScrHi[I] = MUC[0];
-        }
-        //Second most used color goes to ScrLo
-        if ((ColTab1[I] == MUC[1]) || (ColTab2[I] == MUC[1]) || (ColTab3[I] == MUC[1]))
-        {
-            ScrLo[I] = MUC[1];
-        }
-        //Third most used color goes to ColRAM
-        if ((ColTab1[I] == MUC[2]) || (ColTab2[I] == MUC[2]) || (ColTab3[I] == MUC[2]))
-        {
-            ColRAM[I] = MUC[2];
+            for (int BY = 0; BY < 8; BY++)
+            {
+                int CP = (CY * PicW * 8) + (CX * 4) + (BY * PicW);
+                unsigned char V = (PicMsk[CP] * 64) + (PicMsk[CP + 1] * 16) + (PicMsk[CP + 2] * 4) + PicMsk[CP + 3];
+                CP = (CY * CharCol * 8) + (CX * 8) + BY;
+                BMP[CP] = V;
+                arrBMP[CP] = V;
+            }
         }
     }
 
-    for (int J = 3; J < 15; J++)
+    for (size_t i = 0; i < (size_t)ColTabSize; i++)
     {
-        int OverlapSH = 0;      //Overlap with ScrHi
-        int OverlapSL = 0;      //Overlap with ScrLo
-        int OverlapCR = 0;      //Overlap with ColRAM
+        arrBMP[(size_t)(8 * ColTabSize) + i] = ScrRAM[i];
+        arrBMP[(size_t)(9 * ColTabSize) + i] = ColR[i];
+    }
 
-        //Calculate overlap with the color spaces separately for each color
-        for (int I = 0; I < ColTabSize; I++)
+    arrBMP[(size_t)(10 * ColTabSize)] = BGCol;
+    
+    vecBMP.push_back(arrBMP);
+
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void RebuildImage(string OutFileName)
+{
+
+    string SaveFile = OutFileName;
+    if ((NumBGCols > 1) && (CmdColors.size() != 1))
+    {
+        //If we have more than 1 possible background color AND the user requested more than one background color
+        //Then mark the output file name with _0x
+        SaveFile += "_" + ConvertIntToHextString((int)BGCol, 2);
+    }
+
+    if ((OutputKla) && (CharRow >= 25) && (CharCol >= 40))
+    {
+        //Save Koala only if bitmap is at least 320x200 pixels
+        vector <unsigned char> KLA;
+        KLA.resize(10003);
+        KLA[1] = 0x60;
+        KLA[10002] = BGCol;
+
+        int StartCX = (CharCol / 2) - 20;
+        int StartCY = (CharRow / 2) - 12;
+        int StartBY = (CharCol * 4) - 160;
+
+        for (size_t CY = 0; CY < 25; CY++)
         {
-            if (ColMap[(MUC[J] * ColTabSize) + I] == 255)
+            for (size_t BY = 0; BY < 320; BY++)
             {
-                if (ScrHi[I] != 255)
+                KLA[(CY * 320) + BY + 2] = BMP[((StartCY + CY) * CharCol * 8) + StartBY + BY];
+            }
+        }
+
+        for (size_t CY = 0; CY < 25; CY++)
+        {
+            for (size_t CX = 0; CX < 40; CX++)
+            {
+                KLA[8002 + (CY * 40) + CX] = ScrRAM[((StartCY + CY) * CharCol) + StartCX + CX];
+                KLA[9002 + (CY * 40) + CX] = ColR[((StartCY + CY) * CharCol) + StartCX + CX];
+            }
+        }
+        //Save KLA
+        WriteBinaryFile(SaveFile + ".kla", KLA);
+    }
+
+    //Save bitmap, color RAM, and screen RAM
+
+    if (OutputMap)
+    {
+        WriteBinaryFile(SaveFile + ".map", BMP, CharCol * PicH);
+    }
+
+    if (OutputCol)
+    {
+        WriteBinaryFile(SaveFile + ".col", ColR, ColTabSize);
+    }
+
+    if (OutputScr)
+    {
+        WriteBinaryFile(SaveFile + ".scr", ScrRAM, ColTabSize);
+    }
+
+    if (OutputBgc)
+    {
+        BGC[0] = BGCol;
+        WriteBinaryFile(SaveFile + ".bgc", BGC, 1);
+    }
+
+    unsigned char* CCR{};
+    CCR = new unsigned char[ColTabSize / 2] {};
+
+    for (int I = 0; I < ColTabSize / 2; I++)
+    {
+        CCR[I] = ((ColR[I * 2] % 16) * 16) + (ColR[(I * 2) + 1] % 16);
+    }
+
+    //Save compressed ColorRAM wih halfbytes combined
+
+    if (OutputCcr)
+    {
+        WriteBinaryFile(SaveFile + ".ccr", CCR, ColTabSize / 2);
+    }
+
+    //Save optimized bitmap file format only if bitmap is at least 320x200 pixels
+    //Bitmap is stored column wise, color spaces are stored row wise, color RAM is compressed
+
+    if ((OutputObm) && (CharRow >= 25) && (CharCol >= 40))
+    {
+        vector <unsigned char> OBM;
+        OBM.resize(9503);
+        OBM[1] = 0x60;
+        OBM[9502] = BGCol;
+
+        int StartCX = (CharCol / 2) - 20;
+        int StartCY = (CharRow / 2) - 12;
+        //int StartBY = (CharCol * 4) - 160;
+
+        //Bitmap stored column wise
+        for (size_t CX = 0; CX < 40; CX++)
+        {
+            for (size_t CY = 0; CY < 25; CY++)
+            {
+                for (size_t BY = 0; BY < 8; BY++)
                 {
-                    OverlapSH++;
-                }
-                
-                if (ScrLo[I] != 255)           //IS ELSE IF IN VB CODE!!! BUT THIS RESULTS IN A LITTLE BIT BETTER COMPRESSIBILITY
-                {
-                    OverlapSL++;
-                }
-                
-                if (ColRAM[I] != 255)          //IS ELSE IF IN VB CODE!!! BUT THIS RESULTS IN A LITTLE BIT BETTER COMPRESSIBILITY
-                {
-                    OverlapCR++;
+                    OBM[(CX * 200) + (CY * 8) + BY + 2] = BMP[((StartCY + CY) * CharCol * 8) + ((StartCX + CX) * 8) + BY];
                 }
             }
         }
 
-        for (int I = 0; I < ColTabSize; I++)
+        //Screen RAM stored row wise
+        for (size_t CY = 0; CY < 25; CY++)
         {
-            if (ColMap[(MUC[J] * ColTabSize) + I] == 255)
+            for (size_t CX = 0; CX < 40; CX++)
             {
-                if ((OverlapSH <= OverlapSL) && (OverlapSH <= OverlapCR))       //OverlapSH is smallest
+                OBM[8002 + (CY * 40) + CX] = ScrRAM[((StartCY + CY) * CharCol) + StartCX + CX];
+            }
+        }
+
+        StartCX /= 2;
+
+        //Compressed Color RAM stored row wise
+        for (size_t CY = 0; CY < 25; CY++)
+        {
+            for (size_t CX = 0; CX < 20; CX++)
+            {
+                OBM[9002 + (CY * 20) + CX] = CCR[((StartCY + CY) * (CharCol / 2)) + StartCX + CX];
+            }
+        }
+
+        //Save optimized bitmap file format
+        WriteBinaryFile(SaveFile + ".obm", OBM);
+    }
+
+    delete[] CCR;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+int CalculateFragmentation()
+{
+    int LastOffset[6][256]{};   //The last offset of each possible value (0-255) in each of the 6 different combinations
+    int Literals[6][256]{};
+
+    for (int i = 0; i < 6; i++)
+    {
+        for (int j = 0; j < 256; j++)
+        {
+            LastOffset[i][j] = -64;
+        }
+    }
+
+    for (int i = 0; i < ColTabSize; i++)
+    {
+        if (i - LastOffset[0][(ScrHi[i] * 16 + ScrLo[i])] > 64)
+        {
+            //New literal
+            Literals[0][i]++;
+        }
+        LastOffset[0][(ScrHi[i] * 16 + ScrLo[i])] = i;
+
+        if (i - LastOffset[1][(ScrLo[i] * 16 + ScrHi[i])] > 64)
+        {
+            //New literal
+            Literals[1][i]++;
+        }
+        LastOffset[1][(ScrLo[i] * 16 + ScrHi[i])] = i;
+
+
+        if (i - LastOffset[2][(ScrHi[i] * 16 + ColRAM[i])] > 64)
+        {
+            //New literal
+            Literals[2][i]++;
+        }
+        LastOffset[2][(ScrHi[i] * 16 + ColRAM[i])] = i;
+
+        if (i - LastOffset[3][(ColRAM[i] * 16 + ScrHi[i])] > 64)
+        {
+            //New literal
+            Literals[3][i]++;
+        }
+        LastOffset[3][(ColRAM[i] * 16 + ScrHi[i])] = i;
+
+
+        if (i - LastOffset[4][(ScrLo[i] * 16 + ColRAM[i])] > 64)
+        {
+            //New literal
+            Literals[4][i]++;
+        }
+        LastOffset[4][(ScrLo[i] * 16 + ColRAM[i])] = i;
+
+        if (i - LastOffset[5][(ColRAM[i] * 16 + ScrLo[i])] > 64)
+        {
+            //New literal
+            Literals[5][i]++;
+        }
+        LastOffset[5][(ColRAM[i] * 16 + ScrLo[i])] = i;
+    }
+
+    return 0;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+int FindBestLayout()
+{
+    int FragSR0a = 0;   //Hi * 16 + Lo
+    int FragSR0b = 0;   //Lo * 16 + Hi
+    int FragCR0 = 0;    //CR
+    int FragSR1a = 0;   //Hi * 16 + CR
+    int FragSR1b = 0;   //CR * 16 + Hi
+    int FragCR1 = 0;    //Lo
+    int FragSR2a = 0;   //Lo * 16 + CR
+    int FragSR2b = 0;   //CR * 16 + Lo
+    int FragCR2 = 0;    //Hi
+
+    unsigned char LastSR0a = (ScrHi[0] * 16 + ScrLo[0]) ^ 0xff;
+    unsigned char LastSR0b = (ScrLo[0] * 16 + ScrHi[0]) ^ 0xff;
+    unsigned char LastCR0 = ColRAM[0] ^0x0f;
+    unsigned char LastSR1a = (ScrHi[0] * 16 + ColRAM[0]) ^ 0xff;
+    unsigned char LastSR1b = (ColRAM[0] * 16 + ScrHi[0]) ^ 0xff;
+    unsigned char LastCR1 = ScrLo[0] ^ 0x0f;
+    unsigned char LastSR2a = (ScrLo[0] * 16 + ColRAM[0]) ^ 0xff;
+    unsigned char LastSR2b = (ColRAM[0] * 16 + ScrLo[0]) ^ 0xff;
+    unsigned char LastCR2 = ScrHi[0] ^ 0x0f;
+
+    int ColSR0a[256]{};
+    int ColSR0b[256]{};
+    int ColCR0[16]{};
+    int ColSR1a[256]{};
+    int ColSR1b[256]{};
+    int ColCR1[16]{};
+    int ColSR2a[256]{};
+    int ColSR2b[256]{};
+    int ColCR2[16]{};
+
+    for (int i = 0; i < ColTabSize; i++)
+    {
+        if (ScrHi[i] * 16 + ScrLo[i] != LastSR0a)
+        {
+            LastSR0a = ScrHi[i] * 16 + ScrLo[i];
+            FragSR0a++;
+        }
+
+        if (ScrLo[i] * 16 + ScrHi[i] != LastSR0b)
+        {
+            LastSR0b = ScrLo[i] * 16 + ScrHi[i];
+            FragSR0b++;
+        }
+
+        if (ColRAM[i] != LastCR0)
+        {
+            LastCR0 = ColRAM[i];
+            FragCR0++;
+        }
+
+        if (ScrHi[i] * 16 + ColRAM[i] != LastSR1a)
+        {
+            LastSR1a = ScrHi[i] * 16 + ColRAM[i];
+            FragSR1a++;
+        }
+
+        if (ColRAM[i] * 16 + ScrHi[i] != LastSR1b)
+        {
+            LastSR1b = ColRAM[i] * 16 + ScrHi[i];
+            FragSR1b++;
+        }
+
+        if (ScrLo[i] != LastCR1)
+        {
+            LastCR1 = ScrLo[i];
+            FragCR1++;
+        }
+
+        if (ScrLo[i] * 16 + ColRAM[i] != LastSR2a)
+        {
+            LastSR2a = ScrLo[i] * 16 + ColRAM[i];
+            FragSR2a++;
+        }
+
+        if (ColRAM[i] * 16 + ScrLo[i] != LastSR2b)
+        {
+            LastSR2b = ColRAM[i] * 16 + ScrLo[i];
+            FragSR2b++;
+        }
+
+        if (ScrHi[i] != LastCR2)
+        {
+            LastCR2 = ScrHi[i];
+            FragCR2++;
+        }
+
+        ColSR0a[ScrHi[i] * 16 + ScrLo[i]] = 1;
+        ColSR0b[ScrLo[i] * 16 + ScrHi[i]] = 1;
+        ColCR0[ColRAM[i]] = 1;
+        ColSR1a[ScrHi[i] * 16 + ColRAM[i]] = 1;
+        ColSR1b[ColRAM[i] * 16 + ScrHi[i]] = 1;
+        ColCR1[ScrLo[i]] = 1;
+        ColSR2a[ScrLo[i] * 16 + ColRAM[i]] = 1;
+        ColSR2b[ColRAM[i] * 16 + ScrLo[i]] = 1;
+        ColCR2[ScrHi[i]] = 1;
+
+    }
+
+    int NumColSR0a = 0;
+    int NumColSR0b = 0;
+    int NumColCR0 = 0;
+    int NumColSR1a = 0;
+    int NumColSR1b = 0;
+    int NumColCR1 = 0;
+    int NumColSR2a = 0;
+    int NumColSR2b = 0;
+    int NumColCR2 = 0;
+
+    for (int i = 0; i < 16; i++)
+    {
+        NumColCR0 += ColCR0[i];
+        NumColCR1 += ColCR1[i];
+        NumColCR2 += ColCR2[i];
+    }
+
+    for (int i = 0; i < 256; i++)
+    {
+        NumColSR0a += ColSR0a[i];
+        NumColSR0b += ColSR0b[i];
+        NumColSR1a += ColSR1a[i];
+        NumColSR1b += ColSR1b[i];
+        NumColSR2a += ColSR2a[i];
+        NumColSR2b += ColSR2b[i];
+    }
+
+    // Create arrays of the values for each layout
+    int NumCol[6] = {
+        NumColCR0 + NumColSR0a,
+        NumColCR0 + NumColSR0b,
+        NumColCR1 + NumColSR1a,
+        NumColCR1 + NumColSR1b,
+        NumColCR2 + NumColSR2a,
+        NumColCR2 + NumColSR2b
+    };
+
+    int NumFrag[6] = {
+        FragSR0a + FragCR0,    // HiLo, CR
+        FragSR0b + FragCR0,    // LoHi, CR
+        FragSR1a + FragCR1,    // HiCR, Lo
+        FragSR1b + FragCR1,    // CRHi, Lo
+        FragSR2a + FragCR2,    // LoCR, Hi
+        FragSR2b + FragCR2     // CRLo, Hi
+    };
+      
+    int Layout = 0;
+
+    if ((NumFrag[1] <= NumFrag[0]) && (NumFrag[1] <= NumFrag[2]) && (NumFrag[1] <= NumFrag[3]) && (NumFrag[1] <= NumFrag[4]) && (NumFrag[1] <= NumFrag[5]))  //Lo * 16 + Hi, CR
+    {
+        Layout = 1;
+    }
+    else if ((NumFrag[0] <= NumFrag[1]) && (NumFrag[0] <= NumFrag[2]) && (NumFrag[0] <= NumFrag[3]) && (NumFrag[0] <= NumFrag[4]) && (NumFrag[0] <= NumFrag[5]))   //Hi * 16 + Lo, CR
+    {
+        Layout = 1;
+    }
+    else if ((NumFrag[3] <= NumFrag[0]) && (NumFrag[3] <= NumFrag[1]) && (NumFrag[3] <= NumFrag[2]) && (NumFrag[3] <= NumFrag[4]) && (NumFrag[3] <= NumFrag[5]))  //CR * 16 + Hi, Lo
+    {
+        Layout = 3;
+    }
+    else if ((NumFrag[2] <= NumFrag[0]) && (NumFrag[2] <= NumFrag[1]) && (NumFrag[2] <= NumFrag[3]) && (NumFrag[2] <= NumFrag[4]) && (NumFrag[2] <= NumFrag[5]))  //Hi * 16 + CR, Lo
+    {
+        Layout = 3;
+    }
+    else if ((NumFrag[4] <= NumFrag[0]) && (NumFrag[4] <= NumFrag[1]) && (NumFrag[4] <= NumFrag[2]) && (NumFrag[4] <= NumFrag[3]) && (NumFrag[4] <= NumFrag[5]))  //Lo * 16 + CR, Hi
+    {
+        Layout = 4;
+    }
+    else if ((NumFrag[5] <= NumFrag[0]) && (NumFrag[5] <= NumFrag[1]) && (NumFrag[5] <= NumFrag[2]) && (NumFrag[5] <= NumFrag[3]) && (NumFrag[5] <= NumFrag[4]))  //CR * 16 + Lo, Hi
+    {
+        Layout = 4;
+    }
+    
+    /*
+    // Find minimum fragments layout
+    int minFrags = NumFrag[0];
+    int Layout = 0;
+
+    for (int i = 1; i < 6; i++) {
+        if (NumFrag[i] < minFrags) {
+            minFrags = NumFrag[i];
+            Layout = i;
+        }
+        // If fragments are equal, choose the one with fewer unique colors
+        else if (NumFrag[i] == minFrags && NumCol[i] < NumCol[Layout]) {
+            Layout = i;
+        }
+    }
+    
+    Layout = 5;
+    */
+    BestNumFrag = NumFrag[Layout];
+    BestNumFragCol = NumCol[Layout];
+
+    return Layout;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void MoveMatchingSingles()
+{
+    unsigned char Tmp{};
+
+    for (int i = 1; i < ColTabSize - 1; i++)
+    {
+        if ((ScrHi[i] != ScrHi[i - 1]) && (ScrLo[i] != ScrLo[i - 1]) && (ScrHi[i] != ScrHi[i + 1]) && (ScrLo[i] != ScrLo[i + 1]))
+        {
+            if ((ScrHi[i] == ScrLo[i - 1]) || (ScrLo[i] == ScrHi[i - 1]))
+            {
+                Tmp = ScrLo[i];
+                ScrLo[i] = ScrHi[i];
+                ScrHi[i] = Tmp;
+            }
+        }
+
+        if ((ScrHi[i] != ScrHi[i - 1]) && (ColRAM[i] != ColRAM[i - 1]) && (ScrHi[i] != ScrHi[i + 1]) && (ColRAM[i] != ColRAM[i + 1]))
+        {
+            if ((ScrHi[i] == ColRAM[i - 1]) || (ColRAM[i] == ScrHi[i - 1]))
+            {
+                Tmp = ColRAM[i];
+                ColRAM[i] = ScrHi[i];
+                ScrHi[i] = Tmp;
+            }
+        }
+
+        if ((ScrLo[i] != ScrLo[i - 1]) && (ColRAM[i] != ColRAM[i - 1]) && (ScrLo[i] != ScrLo[i + 1]) && (ColRAM[i] != ColRAM[i + 1]))
+        {
+            if ((ScrLo[i] == ColRAM[i - 1]) || (ColRAM[i] == ScrLo[i - 1]))
+            {
+                Tmp = ColRAM[i];
+                ColRAM[i] = ScrLo[i];
+                ScrLo[i] = Tmp;
+            }
+        }
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void FixOverlaps()
+{
+    //WriteBinaryFile(OutFile + "_H.bin", ScrHi, ColTabSize);
+    //WriteBinaryFile(OutFile + "_L.bin", ScrLo, ColTabSize);
+    //WriteBinaryFile(OutFile + "_C.bin", ColRAM, ColTabSize);
+
+    unsigned char OverlapColor = 255;
+    int OverlapFirstIdx = -1;
+    int OverlapLastIdx = -1;
+
+    int i = 0;
+
+    while (i < ColTabSize)
+    {
+        if (ScrHi[i] == ScrLo[i])
+        {
+            OverlapColor = ScrHi[i];
+            OverlapFirstIdx = i;
+
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ScrLo[j] == OverlapColor && ScrHi[j] == OverlapColor)
                 {
-                    if (OverlapSL <= OverlapCR)                                 //OverlapSL is second smallest
-                    {   
-                        if (ScrHi[I] == 255)
-                        {
-                            ScrHi[I] = MUC[J];
-                        }
-                        else if (ScrLo[I] == 255)
-                        {
-                            ScrLo[I] = MUC[J];
-                        }
-                        else
-                        {
-                            ColRAM[I] = MUC[J];
-                        }
-                    }
-                    else
-                    {
-                        if (ScrHi[I] == 255)                                    //OverlapCR is second smallest
-                        {
-                            ScrHi[I] = MUC[J];
-                        }
-                        else if (ColRAM[I] == 255)
-                        {
-                            ColRAM[I] = MUC[J];
-                        }
-                        else
-                        {
-                            ScrLo[I] = MUC[J];
-                        }
-                    }
-                }
-                else if ((OverlapSL <= OverlapSH) && (OverlapSL <= OverlapCR))  //OverlapSL is smallest
-                {
-                    if (OverlapSH <= OverlapCR)                                 //OverlapHi is second smallest
-                    {
-                        if (ScrLo[I] == 255)
-                        {
-                            ScrLo[I] = MUC[J];
-                        }
-                        else if (ScrHi[I] == 255)
-                        {
-                            ScrHi[I] = MUC[J];
-                        }
-                        else
-                        {
-                            ColRAM[I] = MUC[J];
-                        }
-                    }
-                    else
-                    {
-                        if (ScrLo[I] == 255)                                    //OverlapCR is second smallest
-                        {
-                            ScrLo[I] = MUC[J];
-                        }
-                        else if (ColRAM[I] == 255)
-                        {
-                            ColRAM[I] = MUC[J];
-                        }
-                        else
-                        {
-                            ScrHi[I] = MUC[J];
-                        }
-                    }
+                    OverlapLastIdx = j;
                 }
                 else
-                {                                                               //OverlapCR is smallest
-                    if (OverlapSH <= OverlapSL)                                 //OverlapSH is second smallest
+                {
+                    break;
+                }
+            }
+
+            int HiFirstIdx = OverlapFirstIdx;
+            int HiLastIdx = OverlapLastIdx;
+            int LoFirstIdx = OverlapFirstIdx;
+            int LoLastIdx = OverlapLastIdx;
+
+            for (int j = 1; j <= OverlapFirstIdx; j++)
+            {
+                if (ScrHi[OverlapFirstIdx - j] == OverlapColor)
+                {
+                    HiFirstIdx--;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            for (int j = 1; j <= OverlapFirstIdx; j++)
+            {
+                if (ScrLo[OverlapFirstIdx - j] == OverlapColor)
+                {
+                    LoFirstIdx--;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            for (int j = OverlapLastIdx + 1; j < ColTabSize; j++)
+            {
+                if (ScrHi[j] == OverlapColor)
+                {
+                    HiLastIdx++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            for (int j = OverlapLastIdx + 1; j < ColTabSize; j++)
+            {
+                if (ScrLo[j] == OverlapColor)
+                {
+                    LoLastIdx++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            int OverlapHiLen = HiLastIdx - HiFirstIdx + 1;
+            int OverlapLoLen = LoLastIdx - LoFirstIdx + 1;
+
+            unsigned char ColorBefore = OverlapColor;
+            unsigned char ColorAfter = OverlapColor;
+
+            if (OverlapHiLen >= OverlapLoLen)
+            {
+                if (OverlapFirstIdx > 0)
+                {
+                    ColorBefore = ScrLo[OverlapFirstIdx - 1];
+                }
+                if (OverlapLastIdx < ColTabSize - 1)
+                {
+                    ColorAfter = ScrLo[OverlapLastIdx + 1];
+                }
+
+                unsigned char ReplaceColor = 255;
+
+                if (ColorBefore != OverlapColor)
+                {
+                    ReplaceColor = ColorBefore;
+                }
+                else
+                {
+                    ReplaceColor = ColorAfter;
+                }
+
+                if (ReplaceColor != OverlapColor)
+                {
+                    for (int j = OverlapFirstIdx; j <= OverlapLastIdx; j++)
                     {
-                        if (ColRAM[I] == 255)
-                        {
-                            ColRAM[I] = MUC[J];
-                        }
-                        else if (ScrHi[I] == 255)
-                        {
-                            ScrHi[I] = MUC[J];
-                        }
-                        else
-                        {
-                            ScrLo[I] = MUC[J];
-                        }
-                    }
-                    else
-                    {
-                        if (ColRAM[I] == 255)                                   //OverlapSL is second smallest
-                        {
-                            ColRAM[I] = MUC[J];
-                        }
-                        else if (ScrLo[I] == 255)
-                        {
-                            ScrLo[I] = MUC[J];
-                        }
-                        else
-                        {
-                            ScrHi[I] = MUC[J];
-                        }
+                        ScrLo[j] = ReplaceColor;
                     }
                 }
             }
+            else
+            {
+                if (OverlapFirstIdx > 0)
+                {
+                    ColorBefore = ScrHi[OverlapFirstIdx - 1];
+                }
+                if (OverlapLastIdx < ColTabSize - 1)
+                {
+                    ColorAfter = ScrHi[OverlapLastIdx + 1];
+                }
+
+                unsigned char ReplaceColor = 255;
+
+                if (ColorBefore != OverlapColor)
+                {
+                    ReplaceColor = ColorBefore;
+                }
+                else
+                {
+                    ReplaceColor = ColorAfter;
+                }
+
+                if (ReplaceColor != OverlapColor)
+                {
+                    for (int j = OverlapFirstIdx; j <= OverlapLastIdx; j++)
+                    {
+                        ScrHi[j] = ReplaceColor;
+                    }
+                }
+            }
+
+            i = OverlapLastIdx;
         }
+        i++;
     }
 
-    //Move single blocks if there are adjacent blocks with same color in another color space
+    OverlapColor = 255;
+    OverlapFirstIdx = -1;
+    OverlapLastIdx = -1;
 
-    for (int I = 1; I < ColTabSize - 1; I++)
+    i = 0;
+
+
+    while (i < ColTabSize)
     {
-        if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]) && (ScrHi[I] != 255))// && (ScrHi[I + 1] != 255) && (ScrHi[I - 1] != 255))
+        if (ScrHi[i] == ColRAM[i])
         {
-            if (((ScrLo[I] == 255) && (ScrLo[I - 1] == ScrHi[I])) || ((ScrLo[I] == 255) && (ScrLo[I + 1] == ScrHi[I])))
-            {
-                ScrLo[I] = ScrHi[I];
-                ScrHi[I] = 255;
-            }
-            else if (((ColRAM[I] == 255) && (ColRAM[I - 1] == ScrHi[I])) || ((ColRAM[I] == 255) && (ColRAM[I + 1] == ScrHi[I])))
-            {
-                ColRAM[I] = ScrHi[I];
-                ScrHi[I] = 255;
-            }
-        }
+            OverlapColor = ScrHi[i];
+            OverlapFirstIdx = i;
 
-        if ((ScrLo[I] != ScrLo[I - 1]) && (ScrLo[I] != ScrLo[I + 1]) && (ScrLo[I] != 255))// && (ScrLo[I + 1] != 255) && (ScrLo[I - 1] != 255))
-        {
-            if (((ColRAM[I] == 255) && (ColRAM[I - 1] == ScrLo[I])) || ((ColRAM[I] == 255) && (ColRAM[I + 1] == ScrLo[I])))
+            for (int j = i; j < ColTabSize; j++)
             {
-                ColRAM[I] = ScrLo[I];
-                ScrLo[I] = 255;
-            }
-            else if (((ScrHi[I] == 255) && (ScrHi[I - 1] == ScrLo[I])) || ((ScrHi[I] == 255) && (ScrHi[I + 1] == ScrLo[I])))
-            {
-                ScrHi[I] = ScrLo[I];
-                ScrLo[I] = 255;
-            }
-        }
-
-        if ((ColRAM[I] != ColRAM[I - 1]) && (ColRAM[I] != ColRAM[I + 1]) && (ColRAM[I] != 255))// && (ColRAM[I + 1] != 255) && (ColRAM[I - 1] != 255))
-        {
-            if (((ScrHi[I] == 255) && (ScrHi[I - 1] == ColRAM[I])) || ((ScrHi[I] == 255) && (ScrHi[I + 1] == ColRAM[I])))
-            {
-                ScrHi[I] = ColRAM[I];
-                ColRAM[I] = 255;
-            }
-            else if (((ScrLo[I] == 255) && (ScrLo[I - 1] == ColRAM[I])) || ((ScrLo[I] == 255) && (ScrLo[I + 1] == ColRAM[I])))
-            {
-                ScrLo[I] = ColRAM[I];
-                ColRAM[I] = 255;
-            }
-        }
-    }
-
-    //----------------------------------------------------------------------------
-    // Fill unused blocks
-    //----------------------------------------------------------------------------
-
-    if (ColRAM[0] == 255)
-    {
-        ColRAM[0] = 0;      //In case the whole array remained unused
-
-        for (int I = 1; I < ColTabSize; I++)
-        {
-            if (ColRAM[I] != 255)
-            {
-                ColRAM[0] = ColRAM[I];
+                if (ColRAM[j] == OverlapColor && ScrHi[j] == OverlapColor)
+                {
+                    OverlapLastIdx = j;
+                }
+                else
+                {
                     break;
+                }
             }
-        }
-    }
 
-    if (ScrHi[0] == 255)
-    {
-        ScrHi[0] = 0;      //In case the whole array remained unused
+            int HiFirstIdx = OverlapFirstIdx;
+            int HiLastIdx = OverlapLastIdx;
+            int CRFirstIdx = OverlapFirstIdx;
+            int CRLastIdx = OverlapLastIdx;
 
-        for (int I = 1; I < ColTabSize; I++)
-        {
-            if (ScrHi[I] != 255)
+            for (int j = 1; j <= OverlapFirstIdx; j++)
             {
-                ScrHi[0] = ScrHi[I];
-                break;
+                if (ScrHi[OverlapFirstIdx - j] == OverlapColor)
+                {
+                    HiFirstIdx--;
+                }
+                else
+                {
+                    break;
+                }
             }
-        }
-    }
 
-    if (ScrLo[0] == 255)
-    {
-        ScrLo[0] = 0;      //In case the whole array remained unused
-
-        for (int I = 1; I < ColTabSize; I++)
-        {
-            if (ScrLo[I] != 255)
+            for (int j = 1; j <= OverlapFirstIdx; j++)
             {
-                ScrLo[0] = ScrLo[I];
-                break;
+                if (ColRAM[OverlapFirstIdx - j] == OverlapColor)
+                {
+                    CRFirstIdx--;
+                }
+                else
+                {
+                    break;
+                }
             }
+
+            for (int j = OverlapLastIdx + 1; j < ColTabSize; j++)
+            {
+                if (ScrHi[j] == OverlapColor)
+                {
+                    HiLastIdx++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            for (int j = OverlapLastIdx + 1; j < ColTabSize; j++)
+            {
+                if (ColRAM[j] == OverlapColor)
+                {
+                    CRLastIdx++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            int OverlapHiLen = HiLastIdx - HiFirstIdx + 1;
+            int OverlapCRLen = CRLastIdx - CRFirstIdx + 1;
+
+            unsigned char ColorBefore = OverlapColor;
+            unsigned char ColorAfter = OverlapColor;
+
+            if (OverlapHiLen >= OverlapCRLen)
+            {
+                if (OverlapFirstIdx > 0)
+                {
+                    ColorBefore = ColRAM[OverlapFirstIdx - 1];
+                }
+                if (OverlapLastIdx < ColTabSize - 1)
+                {
+                    ColorAfter = ColRAM[OverlapLastIdx + 1];
+                }
+
+                unsigned char ReplaceColor = 255;
+
+                if (ColorBefore != OverlapColor)
+                {
+                    ReplaceColor = ColorBefore;
+                }
+                else
+                {
+                    ReplaceColor = ColorAfter;
+                }
+
+                if (ReplaceColor != OverlapColor)
+                {
+                    for (int j = OverlapFirstIdx; j <= OverlapLastIdx; j++)
+                    {
+                        ColRAM[j] = ReplaceColor;
+                    }
+                }
+            }
+            else
+            {
+                if (OverlapFirstIdx > 0)
+                {
+                    ColorBefore = ScrHi[OverlapFirstIdx - 1];
+                }
+                if (OverlapLastIdx < ColTabSize - 1)
+                {
+                    ColorAfter = ScrHi[OverlapLastIdx + 1];
+                }
+
+                unsigned char ReplaceColor = 255;
+
+                if (ColorBefore != OverlapColor)
+                {
+                    ReplaceColor = ColorBefore;
+                }
+                else
+                {
+                    ReplaceColor = ColorAfter;
+                }
+
+                if (ReplaceColor != OverlapColor)
+                {
+                    for (int j = OverlapFirstIdx; j <= OverlapLastIdx; j++)
+                    {
+                        ScrHi[j] = ReplaceColor;
+                    }
+                }
+            }
+            i = OverlapLastIdx;
         }
+        i++;
     }
 
-    for (int I = 1; I < ColTabSize; I++)
+    OverlapColor = 255;
+    OverlapFirstIdx = -1;
+    OverlapLastIdx = -1;
+
+    i = 0;
+
+
+    while (i < ColTabSize)
     {
-        if (ScrHi[I] == 255)
+        if (ScrLo[i] == ColRAM[i])
         {
-            ScrHi[I] = ScrHi[I - 1];
-        }
-        if ((ScrLo[I] == ScrHi[I]) || (ScrLo[I] == 255))
-        {
-            ScrLo[I] = ScrLo[I - 1];
-        }
+            OverlapColor = ScrLo[i];
+            OverlapFirstIdx = i;
 
-        if ((ColRAM[I] == ScrHi[I]) || (ColRAM[I] == ScrLo[I]) || (ColRAM[I] == 255))
-        {
-            ColRAM[I] = ColRAM[I - 1];
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ColRAM[j] == OverlapColor && ScrLo[j] == OverlapColor)
+                {
+                    OverlapLastIdx = j;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            int LoFirstIdx = OverlapFirstIdx;
+            int LoLastIdx = OverlapLastIdx;
+            int CRFirstIdx = OverlapFirstIdx;
+            int CRLastIdx = OverlapLastIdx;
+
+            for (int j = 1; j <= OverlapFirstIdx; j++)
+            {
+                if (ScrLo[OverlapFirstIdx - j] == OverlapColor)
+                {
+                    LoFirstIdx--;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            for (int j = 1; j <= OverlapFirstIdx; j++)
+            {
+                if (ColRAM[OverlapFirstIdx - j] == OverlapColor)
+                {
+                    CRFirstIdx--;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            for (int j = OverlapLastIdx + 1; j < ColTabSize; j++)
+            {
+                if (ScrLo[j] == OverlapColor)
+                {
+                    LoLastIdx++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            for (int j = OverlapLastIdx + 1; j < ColTabSize; j++)
+            {
+                if (ColRAM[j] == OverlapColor)
+                {
+                    CRLastIdx++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            int OverlapLoLen = LoLastIdx - LoFirstIdx + 1;
+            int OverlapCRLen = CRLastIdx - CRFirstIdx + 1;
+
+            unsigned char ColorBefore = OverlapColor;
+            unsigned char ColorAfter = OverlapColor;
+
+            if (OverlapLoLen >= OverlapCRLen)
+            {
+                if (OverlapFirstIdx > 0)
+                {
+                    ColorBefore = ColRAM[OverlapFirstIdx - 1];
+                }
+                if (OverlapLastIdx < ColTabSize - 1)
+                {
+                    ColorAfter = ColRAM[OverlapLastIdx + 1];
+                }
+
+                unsigned char ReplaceColor = 255;
+
+                if (ColorBefore != OverlapColor)
+                {
+                    ReplaceColor = ColorBefore;
+                }
+                else
+                {
+                    ReplaceColor = ColorAfter;
+                }
+
+                if (ReplaceColor != OverlapColor)
+                {
+                    for (int j = OverlapFirstIdx; j <= OverlapLastIdx; j++)
+                    {
+                        ColRAM[j] = ReplaceColor;
+                    }
+                }
+            }
+            else
+            {
+                if (OverlapFirstIdx > 0)
+                {
+                    ColorBefore = ScrLo[OverlapFirstIdx - 1];
+                }
+                if (OverlapLastIdx < ColTabSize - 1)
+                {
+                    ColorAfter = ScrLo[OverlapLastIdx + 1];
+                }
+
+                unsigned char ReplaceColor = 255;
+
+                if (ColorBefore != OverlapColor)
+                {
+                    ReplaceColor = ColorBefore;
+                }
+                else
+                {
+                    ReplaceColor = ColorAfter;
+                }
+
+                if (ReplaceColor != OverlapColor)
+                {
+                    for (int j = OverlapFirstIdx; j <= OverlapLastIdx; j++)
+                    {
+                        ScrLo[j] = ReplaceColor;
+                    }
+                }
+            }
+            i = OverlapLastIdx;
         }
+        i++;
     }
+
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+/*
+void CorrectOverlaps()
+{
 
     //Find color overlaps (same color in different color spaces) and eliminate them by extending previous or following sequence (whichever is longer)
 
@@ -769,15 +1570,15 @@ bool OptimizeByColor()
         {
             unsigned char HiBefore = ScrHi[i - 1];
             unsigned char LoBefore = ScrLo[i - 1];
-            unsigned char HiAfter = 0x10;
-            unsigned char LoAfter = 0x10;
-            
+            unsigned char HiAfter = ScrHi[i - 1];
+            unsigned char LoAfter = ScrLo[i - 1];
+
             int SeqBefore1 = 0;
             int SeqBefore2 = 0;
             int SeqAfter1 = 0;
             int SeqAfter2 = 0;
 
-            for (int j = i; j < ColTabSize - 1; j++)
+            for (int j = i; j < ColTabSize; j++)
             {
                 if (ScrHi[j] == ScrLo[j])
                 {
@@ -790,7 +1591,7 @@ bool OptimizeByColor()
                     break;
                 }
             }
-            
+
             for (int j = i - 1; j >= 0; j--)
             {
                 if (ScrHi[j] == ScrHi[i - 1])
@@ -836,7 +1637,7 @@ bool OptimizeByColor()
                 }
             }
 
-            if ((SeqBefore1 >= SeqBefore2) && (SeqBefore1 >= SeqAfter1) && (SeqBefore1 >= SeqAfter2))
+            if ((SeqBefore1 <= SeqBefore2) && (SeqBefore1 <= SeqAfter1) && (SeqBefore1 <= SeqAfter2))
             {
                 if (HiBefore != ScrHi[i])
                 {
@@ -853,7 +1654,7 @@ bool OptimizeByColor()
                     }
                 }
             }
-            else if ((SeqBefore2 >= SeqBefore1) && (SeqBefore2 >= SeqAfter1) && (SeqBefore2 >= SeqAfter2))
+            else if ((SeqBefore2 <= SeqBefore1) && (SeqBefore2 <= SeqAfter1) && (SeqBefore2 <= SeqAfter2))
             {
                 if (LoBefore != ScrLo[i])
                 {
@@ -870,7 +1671,7 @@ bool OptimizeByColor()
                     }
                 }
             }
-            else if ((SeqAfter1 >= SeqBefore1) && (SeqAfter1 >= SeqBefore2) && (SeqAfter1 >= SeqAfter2))
+            else if ((SeqAfter1 <= SeqBefore1) && (SeqAfter1 <= SeqBefore2) && (SeqAfter1 <= SeqAfter2))
             {
                 if (HiAfter != ScrHi[i])
                 {
@@ -908,18 +1709,17 @@ bool OptimizeByColor()
 
         if (ScrHi[i] == ColRAM[i])
         {
-
             unsigned char HiBefore = ScrHi[i - 1];
             unsigned char CRBefore = ColRAM[i - 1];
-            unsigned char HiAfter = 0x10;
-            unsigned char CRAfter = 0x10;
+            unsigned char HiAfter = ScrHi[i - 1];
+            unsigned char CRAfter = ColRAM[i - 1];
 
             int SeqBefore1 = 0;
             int SeqBefore2 = 0;
             int SeqAfter1 = 0;
             int SeqAfter2 = 0;
 
-            for (int j = i; j < ColTabSize - 1; j++)
+            for (int j = i; j < ColTabSize; j++)
             {
                 if (ScrHi[j] == ColRAM[j])
                 {
@@ -1052,15 +1852,15 @@ bool OptimizeByColor()
         {
             unsigned char LoBefore = ScrLo[i - 1];
             unsigned char CRBefore = ColRAM[i - 1];
-            unsigned char LoAfter = 0x10;
-            unsigned char CRAfter = 0x10;
+            unsigned char LoAfter = ScrLo[i - 1];
+            unsigned char CRAfter = ColRAM[i - 1];
 
             int SeqBefore1 = 0;
             int SeqBefore2 = 0;
             int SeqAfter1 = 0;
             int SeqAfter2 = 0;
 
-            for (int j = i; j < ColTabSize - 1; j++)
+            for (int j = i; j < ColTabSize; j++)
             {
                 if (ScrLo[j] == ColRAM[j])
                 {
@@ -1189,294 +1989,1167 @@ bool OptimizeByColor()
             }
         }
     }
-
-    for (int i = 1; i < ColTabSize - 1; i++)
-    {
-        bool Chg = false;
-        if ((ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]) && (ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]))
-        {
-            if ((ScrHi[i] == ScrLo[i - 1]) || (ScrLo[i] == ScrHi[i - 1]))
-            {
-                unsigned char Tmp = ScrLo[i];
-                ScrLo[i] = ScrHi[i];
-                ScrHi[i] = Tmp;
-                Chg = true;
-            }
-        }
-
-        if ((ScrHi[i] != ScrHi[i - 1]) && (ScrHi[i] != ScrHi[i + 1]) && (ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]))
-        {
-            if ((ScrHi[i] == ColRAM[i - 1]) || (ColRAM[i] == ScrHi[i - 1]))
-            {
-                unsigned char Tmp = ColRAM[i];
-                ColRAM[i] = ScrHi[i];
-                ScrHi[i] = Tmp;
-                Chg = true;
-            }
-        }
-
-        if ((ScrLo[i] != ScrLo[i - 1]) && (ScrLo[i] != ScrLo[i + 1]) && (ColRAM[i] != ColRAM[i - 1]) && (ColRAM[i] != ColRAM[i + 1]))
-        {
-            if ((ScrLo[i] == ColRAM[i - 1]) || (ColRAM[i] == ScrLo[i - 1]))
-            {
-                unsigned char Tmp = ColRAM[i];
-                ColRAM[i] = ScrLo[i];
-                ScrLo[i] = Tmp;
-                Chg = true;
-            }
-        }
-
-        if (Chg)
-        {
-            i--;
-        }
-    }
-
-/*
-    int NumSeq0{}, NumSeq1{}, NumSeq2{};
-    
-    for (int i = 0; i < ColTabSize - 1; i++)
-    {
-        if (ScrHi[i] != ScrHi[i + 1])
-        {
-            NumSeq0++;
-        }
-        if (ScrLo[i] != ScrLo[i + 1])
-        {
-            NumSeq1++;
-        }
-        if (ColRAM[i] != ColRAM[i + 1])
-        {
-            NumSeq2++;
-        }
-    }
-
-    cout << NumSeq0 << "\t" << NumSeq1 << "\t" << NumSeq2 << "\n";
+}
 */
-    //Combine screen RAM high and low nibbles
-    for (int I = 0; I < ColTabSize; I++)
-    {
-        unsigned char Tmp = ColRAM[I];
-        ColRAM[I] = ScrLo[I];                   //Swap ColRAM with ScrLo - this results in improved compressibility for some reason
-        ScrLo[I] = Tmp;
-        ScrRAM[I] = (ScrHi[I] * 16) + ScrLo[I];
-    }
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
 /*
-    int FreqTab[256]{};
+struct unusedblock {
+    int SeqLenBefore;
+    int NumSeqBefore;
+    unsigned char SeqColorBefore;
+    int UnusedIdx;
+    int UnusedLength;
+    int SeqLenAfter;
+    int NumSeqAfter;
+    unsigned char SeqColorAfter;
+};
 
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void DistributeUnusedBlocks()
+{
+    //WriteBinaryFile(OutFile + "_H.bin", ScrHi, ColTabSize);
+    //WriteBinaryFile(OutFile + "_L.bin", ScrLo, ColTabSize);
+    //WriteBinaryFile(OutFile + "_C.bin", ColRAM, ColTabSize);
+
+    vector<unusedblock>UnusedBlocks;
+    unusedblock UnusedTmp{};
+
+    int i = 0;
+
+    while (i < ColTabSize)
+    {
+        if (ScrHi[i] != 255)
+        {
+            int SeqLen = 0;
+            int SeqLenLast = 0;
+            unsigned char SeqColor = ScrHi[i];
+            int NumCol = 1;
+
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ScrHi[j] != 255)
+                {
+                    SeqLen++;
+                    if (ScrHi[j] != SeqColor)
+                    {
+                        SeqColor = ScrHi[j];
+                        NumCol++;
+                        SeqLenLast = 0;
+                    }
+                    SeqLenLast++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            UnusedTmp.NumSeqBefore = NumCol;
+            UnusedTmp.SeqLenBefore = SeqLenLast;
+            UnusedTmp.SeqColorBefore = SeqColor;
+
+            i += SeqLen;
+        }
+
+        if (ScrHi[i] == 255)
+        {
+            UnusedTmp.UnusedLength = 0;
+            UnusedTmp.UnusedIdx = i;
+
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ScrHi[j] == 255)
+                {
+                    UnusedTmp.UnusedLength++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        i += UnusedTmp.UnusedLength;
+        int SeqLen = 0;
+        int SeqLenFirst = 0;
+        int SeqLenLast = 0;
+        int NumCol = 1;
+        unsigned char SeqColor = ScrHi[i];
+        unsigned char SeqColorFirst = ScrHi[i];
+
+        if (i < ColTabSize)
+        {
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ScrHi[j] != 255)
+                {
+                    SeqLen++;
+                    if (ScrHi[j] != SeqColor)
+                    {
+                        SeqColor = ScrHi[j];
+                        NumCol++;
+                        SeqLenLast = 0;
+                    }
+                    if (NumCol == 1)
+                    {
+                        SeqLenFirst++;
+                    }
+                    SeqLenLast++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            i += SeqLen - 1;
+
+            UnusedTmp.NumSeqAfter = NumCol;
+            UnusedTmp.SeqLenAfter = SeqLenFirst;
+            UnusedTmp.SeqColorAfter = SeqColorFirst;
+
+            UnusedBlocks.push_back(UnusedTmp);
+
+            UnusedTmp.NumSeqBefore = UnusedTmp.NumSeqAfter;
+            UnusedTmp.SeqColorBefore = SeqColor;
+            UnusedTmp.SeqLenBefore = SeqLenLast;
+        }
+        else
+        {
+            UnusedTmp.NumSeqAfter = UnusedTmp.NumSeqBefore;
+            UnusedTmp.SeqLenAfter = UnusedTmp.SeqLenBefore;
+            UnusedTmp.SeqColorAfter = UnusedTmp.SeqColorBefore;
+
+            UnusedBlocks.push_back(UnusedTmp);
+            }
+
+        i++;
+    }
+
+    for (size_t i = 0; i < UnusedBlocks.size(); i++)
+    {
+        if ((UnusedBlocks[i].SeqColorBefore = UnusedBlocks[i].SeqColorAfter) || (UnusedBlocks[i].SeqLenBefore >= UnusedBlocks[i].SeqLenAfter))
+        {
+            unsigned char TmpCol = UnusedBlocks[i].SeqColorBefore;
+            for (int j = UnusedBlocks[i].UnusedIdx; j < UnusedBlocks[i].UnusedIdx + UnusedBlocks[i].UnusedLength; j++)
+            {
+                ScrHi[j] = TmpCol;
+            }
+        }
+        else
+        {
+            unsigned char TmpCol = UnusedBlocks[i].SeqColorAfter;
+            for (int j = UnusedBlocks[i].UnusedIdx; j < UnusedBlocks[i].UnusedIdx + UnusedBlocks[i].UnusedLength; j++)
+            {
+                ScrHi[j] = TmpCol;
+            }
+        }
+    }
+
+    UnusedBlocks.clear();
+
+    UnusedTmp.NumSeqAfter = 0;
+    UnusedTmp.NumSeqBefore = 0;
+    UnusedTmp.SeqColorAfter = 255;
+    UnusedTmp.SeqColorBefore = 255;
+    UnusedTmp.SeqLenAfter = 0;
+    UnusedTmp.SeqLenBefore = 0;
+    UnusedTmp.UnusedIdx = 0;
+    UnusedTmp.UnusedLength = 0;
+
+    i = 0;
+
+    while (i < ColTabSize)
+    {
+        if (ScrLo[i] != 255)
+        {
+            int SeqLen = 0;
+            int SeqLenLast = 0;
+            unsigned char SeqColor = ScrLo[i];
+            int NumCol = 1;
+
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ScrLo[j] != 255)
+                {
+                    SeqLen++;
+                    if (ScrLo[j] != SeqColor)
+                    {
+                        SeqColor = ScrLo[j];
+                        NumCol++;
+                        SeqLenLast = 0;
+                    }
+                    SeqLenLast++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            UnusedTmp.NumSeqBefore = NumCol;
+            UnusedTmp.SeqLenBefore = SeqLenLast;
+            UnusedTmp.SeqColorBefore = SeqColor;
+
+            i += SeqLen;
+        }
+
+        if (ScrLo[i] == 255)
+        {
+            UnusedTmp.UnusedLength = 0;
+            UnusedTmp.UnusedIdx = i;
+
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ScrLo[j] == 255)
+                {
+                    UnusedTmp.UnusedLength++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        i += UnusedTmp.UnusedLength;
+
+        if (i < ColTabSize)
+        {
+
+            int SeqLen = 0;
+            int SeqLenFirst = 0;
+            int SeqLenLast = 0;
+            int NumCol = 1;
+            unsigned char SeqColor = ScrLo[i];
+            unsigned char SeqColorFirst = ScrLo[i];
+
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ScrLo[j] != 255)
+                {
+                    SeqLen++;
+                    if (ScrLo[j] != SeqColor)
+                    {
+                        SeqColor = ScrLo[j];
+                        NumCol++;
+                        SeqLenLast = 0;
+                    }
+                    if (NumCol == 1)
+                    {
+                        SeqLenFirst++;
+                    }
+                    SeqLenLast++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            i += SeqLen - 1;
+
+            UnusedTmp.NumSeqAfter = NumCol;
+            UnusedTmp.SeqLenAfter = SeqLenFirst;
+            UnusedTmp.SeqColorAfter = SeqColorFirst;
+
+            UnusedBlocks.push_back(UnusedTmp);
+
+            UnusedTmp.NumSeqBefore = UnusedTmp.NumSeqAfter;
+            UnusedTmp.SeqColorBefore = SeqColor;
+            UnusedTmp.SeqLenBefore = SeqLenLast;
+
+        }
+        else
+        {
+            UnusedTmp.NumSeqAfter = UnusedTmp.NumSeqBefore;
+            UnusedTmp.SeqLenAfter = UnusedTmp.SeqLenBefore;
+            UnusedTmp.SeqColorAfter = UnusedTmp.SeqColorBefore;
+
+            UnusedBlocks.push_back(UnusedTmp);
+        }
+
+        i++;
+    }
+
+    for (size_t i = 0; i < UnusedBlocks.size(); i++)
+    {
+        if ((UnusedBlocks[i].SeqColorBefore = UnusedBlocks[i].SeqColorAfter) || (UnusedBlocks[i].SeqLenBefore >= UnusedBlocks[i].SeqLenAfter))
+        {
+            unsigned char TmpCol = UnusedBlocks[i].SeqColorBefore;
+            for (int j = UnusedBlocks[i].UnusedIdx; j < UnusedBlocks[i].UnusedIdx + UnusedBlocks[i].UnusedLength; j++)
+            {
+                ScrLo[j] = TmpCol;
+            }
+        }
+        else
+        {
+            unsigned char TmpCol = UnusedBlocks[i].SeqColorAfter;
+            for (int j = UnusedBlocks[i].UnusedIdx; j < UnusedBlocks[i].UnusedIdx + UnusedBlocks[i].UnusedLength; j++)
+            {
+                ScrLo[j] = TmpCol;
+            }
+        }
+    }
+
+    UnusedBlocks.clear();
+
+    UnusedTmp.NumSeqAfter = 0;
+    UnusedTmp.NumSeqBefore = 0;
+    UnusedTmp.SeqColorAfter = 255;
+    UnusedTmp.SeqColorBefore = 255;
+    UnusedTmp.SeqLenAfter = 0;
+    UnusedTmp.SeqLenBefore = 0;
+    UnusedTmp.UnusedIdx = 0;
+    UnusedTmp.UnusedLength = 0;
+
+    i = 0;
+
+    while (i < ColTabSize)
+    {
+        if (ColRAM[i] != 255)
+        {
+            int SeqLen = 0;
+            int SeqLenLast = 0;
+            unsigned char SeqColor = ColRAM[i];
+            int NumCol = 1;
+
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ColRAM[j] != 255)
+                {
+                    SeqLen++;
+                    if (ColRAM[j] != SeqColor)
+                    {
+                        SeqColor = ColRAM[j];
+                        NumCol++;
+                        SeqLenLast = 0;
+                    }
+                    SeqLenLast++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            UnusedTmp.NumSeqBefore = NumCol;
+            UnusedTmp.SeqLenBefore = SeqLenLast;
+            UnusedTmp.SeqColorBefore = SeqColor;
+
+            i += SeqLen;
+        }
+
+        if (ColRAM[i] == 255)
+        {
+            UnusedTmp.UnusedLength = 0;
+            UnusedTmp.UnusedIdx = i;
+
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ColRAM[j] == 255)
+                {
+                    UnusedTmp.UnusedLength++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        i += UnusedTmp.UnusedLength;
+        int SeqLen = 0;
+        int SeqLenFirst = 0;
+        int SeqLenLast = 0;
+        int NumCol = 1;
+        unsigned char SeqColor = ColRAM[i];
+        unsigned char SeqColorFirst = ColRAM[i];
+
+        if (i < ColTabSize)
+        {
+            for (int j = i; j < ColTabSize; j++)
+            {
+                if (ColRAM[j] != 255)
+                {
+                    SeqLen++;
+                    if (ColRAM[j] != SeqColor)
+                    {
+                        SeqColor = ColRAM[j];
+                        NumCol++;
+                        SeqLenLast = 0;
+                    }
+                    if (NumCol == 1)
+                    {
+                        SeqLenFirst++;
+                    }
+                    SeqLenLast++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            i += SeqLen - 1;
+
+            UnusedTmp.NumSeqAfter = NumCol;
+            UnusedTmp.SeqLenAfter = SeqLenFirst;
+            UnusedTmp.SeqColorAfter = SeqColorFirst;
+
+            UnusedBlocks.push_back(UnusedTmp);
+
+            UnusedTmp.NumSeqBefore = UnusedTmp.NumSeqAfter;
+            UnusedTmp.SeqColorBefore = SeqColor;
+            UnusedTmp.SeqLenBefore = SeqLenLast;
+        }
+        else
+        {
+            UnusedTmp.NumSeqAfter = UnusedTmp.NumSeqBefore;
+            UnusedTmp.SeqLenAfter = UnusedTmp.SeqLenBefore;
+            UnusedTmp.SeqColorAfter = UnusedTmp.SeqColorBefore;
+
+            UnusedBlocks.push_back(UnusedTmp);
+        }
+
+        i++;
+    }
+
+    for (size_t i = 0; i < UnusedBlocks.size(); i++)
+    {
+        if ((UnusedBlocks[i].SeqColorBefore = UnusedBlocks[i].SeqColorAfter) || (UnusedBlocks[i].SeqLenBefore >= UnusedBlocks[i].SeqLenAfter))
+        {
+            unsigned char TmpCol = UnusedBlocks[i].SeqColorBefore;
+            for (int j = UnusedBlocks[i].UnusedIdx; j < UnusedBlocks[i].UnusedIdx + UnusedBlocks[i].UnusedLength; j++)
+            {
+                ColRAM[j] = TmpCol;
+            }
+        }
+        else
+        {
+            unsigned char TmpCol = UnusedBlocks[i].SeqColorAfter;
+            for (int j = UnusedBlocks[i].UnusedIdx; j < UnusedBlocks[i].UnusedIdx + UnusedBlocks[i].UnusedLength; j++)
+            {
+                ColRAM[j] = TmpCol;
+            }
+        }
+    }
+
+    //WriteBinaryFile(OutFile + "_H1.bin", ScrHi, ColTabSize);
+    //WriteBinaryFile(OutFile + "_L1.bin", ScrLo, ColTabSize);
+    //WriteBinaryFile(OutFile + "_C1.bin", ColRAM, ColTabSize);
+
+}
+*/
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void FillUnusedBlocks()
+{
+
+    if (ColRAM[0] == 255)
+    {
+        ColRAM[0] = 0;      //In case the whole array remained unused
+
+        for (int I = 1; I < ColTabSize; I++)
+        {
+            if (ColRAM[I] != 255)
+            {
+                ColRAM[0] = ColRAM[I];
+                break;
+            }
+        }
+    }
+
+    if (ScrHi[0] == 255)
+    {
+        ScrHi[0] = 0;      //In case the whole array remained unused
+
+        for (int I = 1; I < ColTabSize; I++)
+        {
+            if (ScrHi[I] != 255)
+            {
+                ScrHi[0] = ScrHi[I];
+                break;
+            }
+        }
+    }
+
+    if (ScrLo[0] == 255)
+    {
+        ScrLo[0] = 0;      //In case the whole array remained unused
+
+        for (int I = 1; I < ColTabSize; I++)
+        {
+            if (ScrLo[I] != 255)
+            {
+                ScrLo[0] = ScrLo[I];
+                break;
+            }
+        }
+    }
+
+    for (int I = 1; I < ColTabSize; I++)
+    {
+        if ((ScrHi[I] == 255) || (ScrHi[I] == ScrLo[I]) || (ScrHi[I] == ColRAM[I]))
+        {
+            ScrHi[I] = ScrHi[I - 1];
+        }
+        if ((ScrLo[I] == 255) || (ScrLo[I] == ScrHi[I]) || (ScrLo[I] == ColRAM[I]))
+        {
+            ScrLo[I] = ScrLo[I - 1];
+        }
+        if ((ColRAM[I] == 255) || (ColRAM[I] == ScrHi[I]) || (ColRAM[I] == ScrLo[I]))
+        {
+            ColRAM[I] = ColRAM[I - 1];
+        }
+    }
+
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void RelocateSingleBlocks()
+{
+    //Move single blocks if there are adjacent blocks with same color in another color space
+
+    for (int I = 1; I < ColTabSize - 1; I++)
+    {
+        if ((ScrHi[I] != ScrHi[I - 1]) && (ScrHi[I] != ScrHi[I + 1]) && (ScrHi[I] != 255))
+        {
+            if (((ScrLo[I] == 255) && (ScrLo[I - 1] == ScrHi[I])) || ((ScrLo[I] == 255) && (ScrLo[I + 1] == ScrHi[I])))
+            {
+                ScrLo[I] = ScrHi[I];
+                ScrHi[I] = 255;
+            }
+            else if (((ColRAM[I] == 255) && (ColRAM[I - 1] == ScrHi[I])) || ((ColRAM[I] == 255) && (ColRAM[I + 1] == ScrHi[I])))
+            {
+                ColRAM[I] = ScrHi[I];
+                ScrHi[I] = 255;
+            }
+        }
+
+        if ((ScrLo[I] != ScrLo[I - 1]) && (ScrLo[I] != ScrLo[I + 1]) && (ScrLo[I] != 255))
+        {
+            if (((ColRAM[I] == 255) && (ColRAM[I - 1] == ScrLo[I])) || ((ColRAM[I] == 255) && (ColRAM[I + 1] == ScrLo[I])))
+            {
+                ColRAM[I] = ScrLo[I];
+                ScrLo[I] = 255;
+            }
+            else if (((ScrHi[I] == 255) && (ScrHi[I - 1] == ScrLo[I])) || ((ScrHi[I] == 255) && (ScrHi[I + 1] == ScrLo[I])))
+            {
+                ScrHi[I] = ScrLo[I];
+                ScrLo[I] = 255;
+            }
+        }
+
+        if ((ColRAM[I] != ColRAM[I - 1]) && (ColRAM[I] != ColRAM[I + 1]) && (ColRAM[I] != 255))
+        {
+            if (((ScrHi[I] == 255) && (ScrHi[I - 1] == ColRAM[I])) || ((ScrHi[I] == 255) && (ScrHi[I + 1] == ColRAM[I])))
+            {
+                ScrHi[I] = ColRAM[I];
+                ColRAM[I] = 255;
+            }
+            else if (((ScrLo[I] == 255) && (ScrLo[I - 1] == ColRAM[I])) || ((ScrLo[I] == 255) && (ScrLo[I + 1] == ColRAM[I])))
+            {
+                ScrLo[I] = ColRAM[I];
+                ColRAM[I] = 255;
+            }
+        }
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool SortBySeqLen(colorspace A, colorspace B)
+{
+    return A.SeqLen > B.SeqLen;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool SortByCompactness(colorspace A, colorspace B)
+{
+    return A.Compactness > B.Compactness;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+//Force color assignment to a specific space
+inline void AssignToSpace(int index, unsigned char color, unsigned char space)
+{
+    switch (space)
+    {
+        case 0:
+            ScrHi[index] = color;
+            break;
+        case 1:
+            ScrLo[index] = color;
+            break;
+        case 2:
+            ColRAM[index] = color;
+            break;
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+//Attempt color assignment to a specific space
+inline bool TryAssignToSpace(int index, unsigned char color, unsigned char space)
+{
+    switch (space)
+    {
+        case 0:
+            if (ScrHi[index] == 255)
+            {
+                ScrHi[index] = color;
+                return true;
+            }
+            break;
+        case 1:
+            if (ScrLo[index] == 255)
+            {
+                ScrLo[index] = color;
+                return true;
+            }
+            break;
+        case 2:
+            if (ColRAM[index] == 255)
+            {
+                ColRAM[index] = color;
+                return true;
+            }
+            break;
+    }
+
+    return false;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void AssignColor(unsigned char color)
+{
+    //Precalculate overlaps for all color spaces
+    int overlapSH = 0, overlapSL = 0, overlapCR = 0;
+    unsigned char* colorMapOffset = &ColMap[color * ColTabSize];
+
+    //Calculate overlap counts in a single pass
     for (int i = 0; i < ColTabSize; i++)
     {
-        FreqTab[ScrRAM[i]]++;
-    }
-
-    for (int i = 0; i < 256; i++)
-    {
-        int ii = (i / 16) + ((i % 16) * 16);
-        if ((i != ii) && (FreqTab[i] != 0) && (FreqTab[ii] != 0))
+        if (colorMapOffset[i] == 255)
         {
-            for (int j = 0; j < ColTabSize; j++)
-            {
-                if (ScrRAM[j] == (unsigned char)ii)
-                {
-                    ScrRAM[j] = i;
-                    FreqTab[ii]--;
-                }
-            }     
-        }
-    }
-*/
-    //----------------------------------------------------------------------------
-    //Rebuild the image
-    //----------------------------------------------------------------------------
-
-    unsigned char Col1{}, Col2{}, Col3{};
-
-    //Replace C64 colors with respective bit pairs
-    for (int CY = 0; CY < CharRow; CY++)
-    {
-        for (int CX = 0; CX < CharCol; CX++)
-        {
-            int CharIndex = (CY * CharCol) + CX;
-            Col1 = ScrHi[CharIndex];        //Fetch colors from tabs
-            Col2 = ScrLo[CharIndex];
-            Col3 = ColRAM[CharIndex];
-            for (int BY = 0; BY < 8; BY++)
-            {
-                for (int BX = 0; BX < 4; BX++)
-                {
-                    //Calculate pixel position in array
-                    int CP = (CY * PicW * 8) + (CX * 4) + (BY * PicW) + BX;
-                    if (Pic[CP] == BGCol)
-                    {
-                        PicMsk[CP] = 0;
-                    }
-                    else if (Pic[CP] == Col1)
-                    {
-                        PicMsk[CP] = 1;
-                    }
-                    else if (Pic[CP] == Col2)
-                    {
-                        PicMsk[CP] = 2;
-                    }
-                    else if (Pic[CP] == Col3)
-                    {
-                        PicMsk[CP] = 3;
-                    }
-                }
-            }
+            overlapSH += (ScrHi[i] != 255);
+            overlapSL += (ScrLo[i] != 255);
+            overlapCR += (ColRAM[i] != 255);
         }
     }
 
-    //Finally, convert bit pairs to final bitmap
-    for (int CY = 0; CY < CharRow; CY++)
-    {
-        for(int CX = 0; CX < CharCol; CX++)
-        {
-            for (int BY = 0; BY < 8; BY++)
-            {
-                int CP = (CY * PicW * 8) + (CX * 4) + (BY * PicW);
-                unsigned char V = (PicMsk[CP] * 64) + (PicMsk[CP + 1] * 16) + (PicMsk[CP + 2] * 4) + PicMsk[CP + 3];
-                CP = (CY * CharCol * 8) + (CX * 8) + BY;
-                BMP[CP] = V;
+    //Determine the priority order for color spaces
+    unsigned char firstSpace, secondSpace, thirdSpace;
 
-            }
+    //Find smallest overlap
+    if (overlapSH <= overlapSL && overlapSH <= overlapCR)
+    {
+        firstSpace = 0; //ScrHi has smallest overlap
+        secondSpace = (overlapSL <= overlapCR) ? 1 : 2; // Choose between ScrLo and ColRAM
+        thirdSpace = (secondSpace == 1) ? 2 : 1;
+    }
+    else if (overlapSL <= overlapSH && overlapSL <= overlapCR)
+    {
+        firstSpace = 1; // ScrLo has smallest overlap
+        secondSpace = (overlapSH <= overlapCR) ? 0 : 2;
+        thirdSpace = (secondSpace == 0) ? 2 : 0;
+    }
+    else
+    {
+        firstSpace = 2; // ColRAM has smallest overlap
+        secondSpace = (overlapSH <= overlapSL) ? 0 : 1;
+        thirdSpace = (secondSpace == 0) ? 1 : 0;
+    }
+
+    //Assign color according to prioritized color spaces
+    for (int i = 0; i < ColTabSize; i++)
+    {
+        if (colorMapOffset[i] != 255)
+        {
+            continue;
+        }
+
+        //Try to assign to preferred spaces in order
+        if (TryAssignToSpace(i, color, firstSpace))
+        {
+            continue;
+        }
+
+        if (TryAssignToSpace(i, color, secondSpace))
+        {
+            continue;
+        }
+
+        //If we get here, assign to the third choice
+        AssignToSpace(i, color, thirdSpace);
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+void RenderImage(int Layout)
+{
+    if (Layout == 0)   //Hi * 16 + Lo, CR
+    {
+        for (int I = 0; I < ColTabSize; I++)
+        {
+            ScrRAM[I] = (ScrHi[I] * 16) + ScrLo[I];
+            ColR[I] = ColRAM[I];
+        }
+    }
+    else if (Layout == 1)  //Lo * 16 + Hi, CR
+        for (int I = 0; I < ColTabSize; I++)
+        {
+            unsigned char Tmp = ScrLo[I];
+            ScrLo[I] = ScrHi[I];
+            ScrHi[I] = Tmp;
+            ScrRAM[I] = (ScrHi[I] * 16) + ScrLo[I];
+            ColR[I] = ColRAM[I];
+        }
+    else if (Layout == 2)  //Hi * 16 + CR, Lo
+    {
+        for (int I = 0; I < ColTabSize; I++)
+        {
+            unsigned char Tmp = ColRAM[I];
+            ColR[I] = ScrLo[I];
+            ScrLo[I] = Tmp;
+            ScrRAM[I] = (ScrHi[I] * 16) + ScrLo[I];
+        }
+    }
+    else if (Layout == 3)  //CR * 16 + Hi, Lo
+    {
+        for (int I = 0; I < ColTabSize; I++)
+        {
+            unsigned char Tmp = ColRAM[I];
+            ColR[I] = ScrLo[I];
+            ScrLo[I] = ScrHi[I];
+            ScrHi[I] = Tmp;
+            ScrRAM[I] = (ScrHi[I] * 16) + ScrLo[I];
+        }
+    }
+    else if (Layout == 4)  //Lo * 16 + CR, Hi
+    {
+        for (int I = 0; I < ColTabSize; I++)
+        {
+            unsigned char Tmp = ColRAM[I];
+            ColR[I] = ScrHi[I];
+            ScrHi[I] = ScrLo[I];
+            ScrLo[I] = Tmp;
+            ScrRAM[I] = (ScrHi[I] * 16) + ScrLo[I];
+        }
+    }
+    else if (Layout == 5)   //CR * 16 + Lo, Hi
+    {
+        for (int I = 0; I < ColTabSize; I++)
+        {
+            unsigned char Tmp = ColRAM[I];
+            ColR[I] = ScrHi[I];
+            ScrHi[I] = Tmp;
+            ScrRAM[I] = (ScrHi[I] * 16) + ScrLo[I];
         }
     }
 
-    string SaveFile = OutFile;
-    if ((NumBGCols > 1) && (CmdColors.size() != 1))
+    CreateBitmapData();
+
+    //RebuildImage(OutFile + "_" + to_string(BestNumFrag) + "_" + to_string(BestNumFragCol));
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool OptimizeKoala()
+{    
+    ScrHi = new unsigned char[ColTabSize] {};
+    ScrLo = new unsigned char[ColTabSize] {};
+    ScrRAM = new unsigned char[ColTabSize] {};
+    ColRAM = new unsigned char[ColTabSize] {};
+    ColR = new unsigned char[ColTabSize] {};
+    BGC = new unsigned char[1];
+    ColMap = new unsigned char[16 * ColTabSize] {};             //We still have UnusedColor = 16 here, so we need an extra map!!!
+
+    int C64Col[17]{};                                           //0x00-0x10 (UnusedColor = 0x10)
+    int NumSeq[16]{};
+
+    vecBMP.clear();
+
+    int NumColors = 0;
+
+    for (int c = 0; c < 16; c++)
     {
-        //If we have more than 1 possible background color AND the user requested more than one background color
-        //Then mark the output file name with _0x
-        SaveFile += "_"+ ConvertIntToHextString((int)BGCol, 2);
+        ColorSpace[c].Used = false;
     }
 
-    if ((OutputKla) && (CharRow >= 25) && (CharCol >= 40))
+    for (int I = 0; I < ColTabSize; I++)
     {
-        //Save Koala only if bitmap is at least 320x200 pixels
-        vector <unsigned char> KLA;
-        KLA.resize(10003);
-        KLA[1] = 0x60;
-        KLA[10002] = BGCol;
+        ColRAM[I] = 255;                                        //Reset color spaces
+        ScrHi[I] = 255;
+        ScrLo[I] = 255;
 
-        int StartCX = (CharCol / 2) - 20;
-        int StartCY = (CharRow / 2) - 12;
-        int StartBY = (CharCol * 4) - 160;
+        C64Col[ColTab1[I]]++;                                   //Calculate frequency of colors
+        C64Col[ColTab2[I]]++;
+        C64Col[ColTab3[I]]++;
 
-        for (size_t CY = 0; CY < 25; CY++)
+        if (ColTab1[I] != UnusedColor)
         {
-            for (size_t BY = 0; BY < 320; BY++)
-            {
-                KLA[(CY * 320) + BY + 2] = BMP[((StartCY + CY) * CharCol * 8) + StartBY + BY];
-            }
+            ColorSpace[ColTab1[I]].Used = true;
+        }
+        if (ColTab2[I] != UnusedColor)
+        {
+            ColorSpace[ColTab2[I]].Used = true;
+        }
+        if (ColTab3[I] != UnusedColor)
+        {
+            ColorSpace[ColTab3[I]].Used = true;
         }
 
-        for (size_t CY = 0; CY < 25; CY++)
+        if (ColTab1[I] != UnusedColor)
         {
-            for (size_t CX = 0; CX < 40; CX++)
-            {
-                KLA[8002 + (CY * 40) + CX] = ScrRAM[((StartCY + CY) * CharCol) + StartCX + CX];
-                KLA[9002 + (CY * 40) + CX] = ColRAM[((StartCY + CY) * CharCol) + StartCX + CX];
-            }
+            ColMap[(ColTab1[I] * ColTabSize) + I] = 255;        //Create a separate color map for each color, avoiding UnusedColor
         }
-        //Save KLA
-        WriteBinaryFile(SaveFile + ".kla", KLA);
-    }
-
-    //Save bitmap, color RAM, and screen RAM
-
-    if (OutputMap)
-    {
-        WriteBinaryFile(SaveFile + ".map", BMP, CharCol*PicH);
-    }
-
-    if (OutputCol)
-    {
-        WriteBinaryFile(SaveFile + ".col", ColRAM, ColTabSize);
-    }
-
-    if (OutputScr)
-    {
-        WriteBinaryFile(SaveFile + ".scr", ScrRAM, ColTabSize);
-    }
-
-    if (OutputBgc)
-    {
-        BGC[0] = BGCol;
-        WriteBinaryFile(SaveFile + ".bgc", BGC, 1);
-    }
-
-    unsigned char* CCR{};
-    CCR = new unsigned char[ColTabSize / 2] {};
-
-    for(int I = 0; I < ColTabSize / 2; I++)
-    {
-        CCR[I] = ((ColRAM[I * 2] % 16) * 16) + (ColRAM[(I * 2) + 1] % 16);
-    }
-
-    //Save compressed ColorRAM with halfbytes combined
-
-    if (OutputCcr)
-    {
-        WriteBinaryFile(SaveFile + ".ccr", CCR, ColTabSize/2);
-    }
-
-    //Save optimized bitmap file format only if bitmap is at least 320x200 pixels
-    //Bitmap is stored column wise, color spaces are stored row wise, color RAM is compressed
-
-    if ((OutputObm) && (CharRow >= 25) && (CharCol >= 40))
-    {
-        vector <unsigned char> OBM;
-        OBM.resize(9503);
-        OBM[1] = 0x60;
-        OBM[9502] = BGCol;
-
-        int StartCX = (CharCol / 2) - 20;
-        int StartCY = (CharRow / 2) - 12;
-        //int StartBY = (CharCol * 4) - 160;
-
-        //Bitmap stored column wise
-        for (size_t CX = 0; CX < 40; CX++)
+        if (ColTab2[I] != UnusedColor)
         {
-            for (size_t CY = 0; CY < 25; CY++)
-            {
-                for (size_t BY = 0; BY < 8; BY++)
-                {
-                    OBM[(CX * 200) + (CY * 8) + BY + 2] = BMP[((StartCY + CY) * CharCol * 8) + ((StartCX + CX) * 8) + BY];
-                }
-            }
+            ColMap[(ColTab2[I] * ColTabSize) + I] = 255;
         }
-
-        //Screen RAM stored row wise
-        for (size_t CY = 0; CY < 25; CY++)
+        if (ColTab3[I] != UnusedColor)
         {
-            for (size_t CX = 0; CX < 40; CX++)
-            {
-                OBM[8002 + (CY * 40) + CX] = ScrRAM[((StartCY + CY) * CharCol) + StartCX + CX];
-            }
+            ColMap[(ColTab3[I] * ColTabSize) + I] = 255;
         }
+    }
 
-        StartCX /= 2;
-
-        //Compressed Color RAM stored row wise
-        for (size_t CY = 0; CY < 25; CY++)
+    for (int c = 0; c < 16; c++)
+    {
+        if (C64Col[c] > 0)
         {
-            for (size_t CX = 0; CX < 20; CX++)
-            {
-                OBM[9002 + (CY * 20) + CX] = CCR[((StartCY + CY) * (CharCol / 2)) + StartCX + CX];
-            }
+            NumColors++;
         }
         
-        //Save optimized bitmap file format
-        WriteBinaryFile(SaveFile + ".obm", OBM);
+        ColorSpace[c].Color = c;
+        
+        int LenCol = 0;
+        int ThisSeq = 0;
+        int ColStart = INT_MAX;
+        int UnusedSeq = 0;
+        int NumUnused = 0;
+        int LenUnused = 0;
+        for (int i = 0; i < ColTabSize; i++)
+        {
+            if (ColMap[(c * ColTabSize) + i] == 255)
+            {
+                if (ColStart == INT_MAX)
+                {
+                    ColStart = i;
+                }
+                LenCol++;
+                ThisSeq++;
+                if ((UnusedSeq > 0) && (ColStart != INT_MAX))
+                {
+                    NumUnused++;
+                    LenUnused += UnusedSeq;
+                    UnusedSeq = 0;
+                }
+            }
+            else
+            {
+                if (ColStart < INT_MAX)
+                {
+                    UnusedSeq++;
+                }
+                if (ThisSeq > 0)
+                {
+                    NumSeq[c]++;
+                    ThisSeq = 0;
+                }
+            }
+        }
+
+        if (NumSeq[c] != 0)
+        {
+            ColorSpace[c].SeqLen = (double)LenCol / (double)NumSeq[c];
+            ColorSpace[c].Compactness = LenCol + LenUnused;
+        }
+
+        if (NumUnused != 0)
+        {
+            ColorSpace[c].UnusedLen = (double)LenUnused / (double)NumUnused;
+            ColorSpace[c].Compactness = LenCol + LenUnused / LenUnused;
+        }
+    }
+    if (VerboseMode)
+    {
+        cout << "Colors used: " << NumColors + 1 << "\n";
     }
 
+    int BestFrag = ColTabSize * 2;
+    int BestFragCol = ColTabSize * 2;
+    int BestCompress = INT_MAX;
+
+    int Iterations = NumColors > 8 ? 8 : NumColors < 4 ? 4 : NumColors;     //Iterations: min. 4, max. 8
+
+    sort(ColorSpace.begin(), ColorSpace.end(), SortBySeqLen);
+
+    if (OnePassMode)
+    {
+        fill_n(ColRAM, ColTabSize, 255);
+        fill_n(ScrHi, ColTabSize, 255);
+        fill_n(ScrLo, ColTabSize, 255);
+
+        for (int i = 0; i < 15; i++)
+        {
+            if (ColorSpace[i].Used) AssignColor(ColorSpace[i].Color);
+        }
+
+        if (VerboseMode)
+        {
+            cout << "Output candidate #1 with color order ";
+            for (int i = 0; i < 15; i++)
+            {
+                if ((ColorSpace[i].Used))
+                {
+                    cout << (int)ColorSpace[i].Color;
+                }
+            }
+            cout << (dec) << "\n";
+        }
+
+        for (int i = 0; i < 2; i++)
+        {
+            RelocateSingleBlocks();
+            FillUnusedBlocks();
+            FixOverlaps();
+            MoveMatchingSingles();
+        }
+
+        int Layout = FindBestLayout();
+        RenderImage(Layout);
+
+        Predictors.push_back(BestNumFrag + BestNumFragCol);
+    }
+    else
+    {
+        for (int c0 = 0; c0 < Iterations; c0++)
+        {
+            for (int c1 = 0; c1 < Iterations; c1++)
+            {
+                if (c1 != c0)
+                {
+                    for (int c2 = 0; c2 < Iterations; c2++)
+                    {
+                        if ((c2 != c0) && (c2 != c1))
+                        {
+                            for (int c3 = 0; c3 < Iterations; c3++)
+                            {
+                                if ((c3 != c0) && (c3 != c1) && (c3 != c2))
+                                {
+                                    fill_n(ColRAM, ColTabSize, 255);
+                                    fill_n(ScrHi, ColTabSize, 255);
+                                    fill_n(ScrLo, ColTabSize, 255);
+
+                                    if (ColorSpace[c0].Used) AssignColor(ColorSpace[c0].Color);
+                                    if (ColorSpace[c1].Used) AssignColor(ColorSpace[c1].Color);
+                                    if (ColorSpace[c2].Used) AssignColor(ColorSpace[c2].Color);
+                                    if (ColorSpace[c3].Used) AssignColor(ColorSpace[c3].Color);
+
+                                    for (int i = 0; i < 15; i++)
+                                    {
+                                        if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
+                                        {
+                                            AssignColor(ColorSpace[i].Color);
+                                        }
+                                    }
+
+                                    for (int i = 0; i < 2; i++)
+                                    {
+                                        RelocateSingleBlocks();
+                                        FillUnusedBlocks();
+                                        FixOverlaps();
+                                        MoveMatchingSingles();
+                                    }
+
+                                    int Layout = FindBestLayout();
+
+                                    if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
+                                    {
+                                        RenderImage(Layout);
+
+                                        BestFrag = BestNumFrag;
+                                        BestFragCol = BestNumFragCol;
+
+                                        Predictors.push_back(BestNumFrag + BestNumFragCol);
+
+                                        if (VerboseMode)
+                                        {
+                                            cout << "Output candidate #" << Predictors.size() << " with color order ";                                           
+                                            cout << (hex);
+                                            if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
+                                            if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
+                                            if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
+                                            if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
+                                            for (int i = 0; i < 15; i++)
+                                            {
+                                                if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
+                                                {
+                                                    cout << (int)ColorSpace[i].Color;
+                                                }
+                                            }
+                                            cout << (dec) << "\n";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /*
+    sort(ColorSpace.begin(), ColorSpace.end(), SortByCompactness);
+
+    BestFrag = ColTabSize * 2;
+    BestFragCol = ColTabSize * 2;
+
+    if (!OnePassMode)
+    {
+        for (int c0 = 0; c0 < Iterations; c0++)
+        {
+            for (int c1 = 0; c1 < Iterations; c1++)
+            {
+                if (c1 != c0)
+                {
+                    for (int c2 = 0; c2 < Iterations; c2++)
+                    {
+                        if ((c2 != c0) && (c2 != c1))
+                        {
+                            for (int c3 = 0; c3 < Iterations; c3++)
+                            {
+                                if ((c3 != c0) && (c3 != c1) && (c3 != c2))
+                                {
+                                    fill_n(ColRAM, ColTabSize, 255);
+                                    fill_n(ScrHi, ColTabSize, 255);
+                                    fill_n(ScrLo, ColTabSize, 255);
+
+                                    if (ColorSpace[c0].Used) AssignColor(ColorSpace[c0].Color);
+                                    if (ColorSpace[c1].Used) AssignColor(ColorSpace[c1].Color);
+                                    if (ColorSpace[c2].Used) AssignColor(ColorSpace[c2].Color);
+                                    if (ColorSpace[c3].Used) AssignColor(ColorSpace[c3].Color);
+
+                                    for (int i = 0; i < 15; i++)
+                                    {
+                                        if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
+                                        {
+                                            AssignColor(ColorSpace[i].Color);
+                                        }
+                                    }
+
+                                    for (int i = 0; i < 2; i++)
+                                    {
+                                        RelocateSingleBlocks();
+                                        FillUnusedBlocks();
+                                        FixOverlaps();
+                                        MoveMatchingSingles();
+                                    }
+
+                                    int Layout = FindBestLayout();
+
+                                    if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
+                                    {
+                                        RenderImage(Layout);
+
+                                        BestFrag = BestNumFrag;
+                                        BestFragCol = BestNumFragCol;
+
+                                        Predictors.push_back(BestNumFrag + BestNumFragCol);
+
+                                        if (VerboseMode)
+                                        {
+                                            cout << "Output candidate #" << Predictors.size() << " with color order ";
+                                            cout << (hex);
+                                            if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
+                                            if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
+                                            if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
+                                            if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
+                                            for (int i = 0; i < 15; i++)
+                                            {
+                                                if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
+                                                {
+                                                    cout << (int)ColorSpace[i].Color;
+                                                }
+                                            }
+                                            cout << (dec) << "\n";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    */
+    size_t IdxBest = 0;
+    if (vecBMP.size() > 1)
+    {
+        for (size_t i = 0; i < vecBMP.size(); i++)
+        {
+            if (VerboseMode)
+            {
+                cout << "Analyzing output candidate #" << i + 1 << ".";
+            }
+
+            int ThisCompress = CalculateCompressedSize(vecBMP[i]);
+            
+            if (ThisCompress < BestCompress)
+            {
+                IdxBest = i;
+                BestCompress = ThisCompress;
+            }
+            else if ((ThisCompress == BestCompress) && (Predictors[i] < Predictors[IdxBest]))
+            {
+                IdxBest = i;
+                BestCompress = ThisCompress;
+            }
+            
+            if (VerboseMode)
+            {
+#ifdef DEBUG
+                cout << " Cost: " << ThisCompress << " bytes. Best candidate: #" << IdxBest + 1 << "\n";
+#else
+                cout << " Best candidate: #" << IdxBest + 1 << "\n";
+#endif // DEBUG
+
+            }
+        }
+    }
+
+    if (VerboseMode)
+    {
+        cout << "Creating output using candidate #" << IdxBest + 1 << "\n";
+    }
+
+    for (size_t i = 0; i < (size_t) ColTabSize * 8; i++)
+    {
+        BMP[i] = vecBMP[IdxBest][i];
+    }
+
+    for (size_t i = 0; i < (size_t)ColTabSize; i++)
+    {
+        ScrRAM[i] = vecBMP[IdxBest][i + (size_t)(8 * ColTabSize)];
+        ColR[i] = vecBMP[IdxBest][i + (size_t)(9 * ColTabSize)];
+    }
+
+    BGCol = vecBMP[IdxBest][(size_t)(10 * ColTabSize)];
+
+    RebuildImage(OutFile);
+
     delete[] ColRAM;
+    delete[] ColR;
     delete[] ScrLo;
     delete[] ScrHi;
     delete[] ScrRAM;
     delete[] ColMap;
-    delete[] CCR;
     delete[] BGC;
 
     return true;
@@ -1522,7 +3195,7 @@ bool OptimizeImage()
     {
         for (size_t X = 0; X < PicW; X++)
         {
-            Pic[(Y * PicW) + X] = paletteconvtab[GetPixel(C64Bitmap, X * 2, Y).R];
+            Pic[(Y * PicW) + X] = paletteconvtab[GetPixel(C64Bitmap, X * 2, Y, PicW).R];
         }
     }
 
@@ -1618,7 +3291,7 @@ bool OptimizeImage()
                 if ((CT3[I] != C) && (CT3[I] != UnusedColor)) ColCnt++;
                 if (ColCnt == 4)
                 {
-                    //We can only have 3 non-background colors per char. If we find 4 than the current color cannot be used as a background color
+                    //We can only have 3 non-background colors per char. If we find 4 then the current color cannot be used as a background color
 
                     ColOK = false;
                     break;
@@ -1658,7 +3331,7 @@ bool OptimizeImage()
 
             if (!ColFound)
             {
-                cerr << "***CRITICAL***This picture cannot be converted as the requested color(s) cannot be used as a background color!\n";
+                cerr << "***CRITICAL***This picture cannot be converted with the requested background color(s)!\n";
                 ReturnStatus = false;
             }
         }
@@ -1711,7 +3384,7 @@ bool OptimizeImage()
 
                     //ColTab0 can only contain UnusedColor and BGCol here!!! - we won't need to use it in OptimizeByColor()
 
-                    OptimizeByColor();
+                    OptimizeKoala();
 
                     if (CmdColors == "x")
                     {
@@ -1758,9 +3431,6 @@ bool ConvertPicToC64Palette()
         }
     }
 
-    //int* BestPalette;
-    //BestPalette = new int[NumPalettes] {};
-
     unsigned int ThisPalette[16]{};
     for (int i = 0; i < 16; i++)
     {
@@ -1775,7 +3445,7 @@ bool ConvertPicToC64Palette()
     {
         for (size_t x = 0; x < PicW; x ++)
         {
-            unsigned int ThisCol = GetColor(Image, (x*2), y);
+            unsigned int ThisCol = GetColor(Image, (x*2), y, PicW);
             bool ColorMatch = false;
             for (int c = 0; c < NumColors; c++)
             {
@@ -1829,28 +3499,27 @@ bool ConvertPicToC64Palette()
         }
     }
 
-#ifdef DEBUG
-    PaletteIdx = -1;
-#endif
-
     if (PaletteIdx > -1)
     {
-        cout << "Exact palette match found: " << PaletteNames[PaletteIdx] << "\n";
+        if (VerboseMode)
+        {
+            cout << "Exact palette match found: " << PaletteNames[PaletteIdx] << "\n";
+        }
         
         //Palette match found, convert to Pixcen palette
         for (size_t y = 0; y < PicH; y++)
         {
             for (size_t x = 0; x < PicW; x++)
             {
-                unsigned int ThisCol = GetColor(Image, (x*2), y);
+                unsigned int ThisCol = GetColor(Image, (x*2), y, PicW);
 
                 for (int i = 0; i < 16; i++)
                 {
                     if (c64palettes[(PaletteIdx * 16) + i] == ThisCol)
                     {
                         int DefaultColor = c64palettes[VICE_36_Pixcen * 16 + i];  //Use Pixcen palette because paletteconvtab works with that one.
-                        SetColor(C64Bitmap, (x * 2), y, DefaultColor);
-                        SetColor(C64Bitmap, (x * 2) + 1, y, DefaultColor);
+                        SetColor(C64Bitmap, (x * 2), y,PicW, DefaultColor);
+                        SetColor(C64Bitmap, (x * 2) + 1, y, PicW, DefaultColor);
                     }
                 }
             }
@@ -1858,7 +3527,10 @@ bool ConvertPicToC64Palette()
     }
     else
     {
-        cout << "No exact palette match found. Closest palette: ";
+        if (VerboseMode)
+        {
+            cout << "No exact palette match found. Closest palette: ";
+        }
         
         int BestPaletteIdx = 0;
 
@@ -1904,13 +3576,16 @@ bool ConvertPicToC64Palette()
             }
         }
         
-        cout << PaletteNames[BestPaletteIdx] << "\n";
+        if (VerboseMode)
+        {
+            cout << PaletteNames[BestPaletteIdx] << "\n";
+        }
 
         for (size_t y = 0; y < PicH; y++)
         {
             for (size_t x = 0; x < PicW; x++)
             {
-                unsigned int ThisCol = GetColor(Image, (x * 2), y);
+                unsigned int ThisCol = GetColor(Image, (x * 2), y, PicW);
                 
                 for (int i = 0; i < NumColors; i++)
                 {
@@ -1919,17 +3594,15 @@ bool ConvertPicToC64Palette()
                         int ColorIndex = BestColorIdx[i];
                         unsigned int DefaultColor = c64palettes[VICE_36_Pixcen * 16 + ColorIndex]; //Identify the color in the Best Match Palette
 
-                        SetColor(C64Bitmap, (x * 2), y, DefaultColor);
-                        SetColor(C64Bitmap, (x * 2) + 1, y, DefaultColor);
+                        SetColor(C64Bitmap, (x * 2), y, PicW, DefaultColor);
+                        SetColor(C64Bitmap, (x * 2) + 1, y, PicW, DefaultColor);
                     }
                 }
             }
         }
     }
 
-    //delete[] BestPalette;
-
-    return OptimizeImage(); //
+    return OptimizeImage();
 
 }
 
@@ -2007,7 +3680,7 @@ bool DecodeBmp()
         {
             size_t RowOffset = DataOffset + (y * PaddedRowLen);
 
-            for (size_t X = 0; X < RowLen; X++)                         //Pixel row are read left to right
+            for (size_t X = 0; X < RowLen; X++)                         //Pixel rows are read left to right
             {
                 unsigned int Pixel = ImgRaw[RowOffset + X];
 
@@ -2026,13 +3699,13 @@ bool DecodeBmp()
     }
     else
     {
-        int BytesPerPx = BmpInfo->bmiHeader.biBitCount / 8;    //24 Bits/pixel: 3; 32 Bits/pixel: 4
+        int BytesPerPx = BmpInfo->bmiHeader.biBitCount / 8;             //24 Bits/pixel: 3; 32 Bits/pixel: 4
 
         for (int y = (BmpInfo->bmiHeader.biHeight - 1); y >= 0; y--)    //Pixel rows are read from last bitmap row to first
         {
             size_t RowOffset = DataOffset + (y * PaddedRowLen);
 
-            for (size_t X = 0; X < RowLen; X += BytesPerPx)              //Pixel row are read left to right
+            for (size_t X = 0; X < RowLen; X += BytesPerPx)              //Pixel rows are read left to right
             {
                 Image[BmpOffset++] = ImgRaw[RowOffset + X + 2];
                 Image[BmpOffset++] = ImgRaw[RowOffset + X + 1];
@@ -2059,8 +3732,8 @@ bool IsMCImage()
     {
         for (size_t X = 0; X < PicW; X++)
         {
-            color Col1 = GetPixel(Image, X * 2, Y);
-            color Col2 = GetPixel(Image, (X * 2) + 1, Y);
+            color Col1 = GetPixel(Image, X * 2, Y, PicW);
+            color Col2 = GetPixel(Image, (X * 2) + 1, Y, PicW);
             if ((Col1.R != Col2.R) || (Col1.G != Col2.G) || (Col1.B != Col2.B))
             {
                 cerr << "***CRITICAL***SPOT only accepts multicolor (double-pixel) pictures as input. This image file cannot be converted!\n";
@@ -2105,16 +3778,40 @@ bool ImportFromImage()
         {
             return false;
         }
-    }
-    
+    }   
 
     //Make sure this is a MC (double pixel) picture
     if (!IsMCImage())
         return false;
 
+    if (PicW == VICE_PicW && PicH == VICE_PicH)
+    {
+    //We have a VICE screenshot, trim borders
+
+        if (VerboseMode)
+        {
+            cout << "VICE screenshot input image size detected. Borders will be trimmed.\n";
+        }
+
+        int StartOffset = PicW * 2 * 4 * 35 + 32 * 4;
+        int RowLen = 160 * 4 * 2;
+        int NumRows = 200;
+        int o = 0;
+        for (int j = 0; j < NumRows; j++)
+        {
+            for (int i = 0; i < RowLen; i++)
+            {
+                Image[o++] = Image[StartOffset + (j * PicW * 2 * 4) + i];
+            }
+        }
+        
+        Image.resize(320 * 200 * 4);
+        PicW = 320 / 2;
+        PicH = 200;
+    }
+
     //Here we have the image decoded in the Image vector of unsigned chars, 4 bytes representing a pixel in RGBA format
     //Next we will find the best palette match
-
     return ConvertPicToC64Palette();
 }
 
@@ -2217,10 +3914,10 @@ bool ImportFromKoala()
 
             color C64Color{ (unsigned char)((C64Col >> 16) & 0xff),(unsigned char)((C64Col >> 8) & 0xff),(unsigned char)(C64Col & 0xff) };
 
-            SetPixel(Image, 2 * X, Y, C64Color);
-            SetPixel(Image, (2 * X) + 1, Y, C64Color);
-            SetPixel(C64Bitmap, 2 * X, Y, C64Color);
-            SetPixel(C64Bitmap, (2 * X) + 1, Y, C64Color);
+            SetPixel(Image, 2 * X, Y, PicW, C64Color);
+            SetPixel(Image, (2 * X) + 1, Y, PicW, C64Color);
+            SetPixel(C64Bitmap, 2 * X, Y, PicW, C64Color);
+            SetPixel(C64Bitmap, (2 * X) + 1, Y, PicW, C64Color);
         }
     }
 
@@ -2246,11 +3943,11 @@ void ShowHelp()
     cout << "complex display routine.\n\n";
     cout << "Usage\n";
     cout << "-----\n\n";
-    cout << "spot input -o [output] -f [format] -b [bgcolor]\n\n";
+    cout << "spot input -o [output] -f [format] -b [bgcolor] -v -s\n\n";
     cout << "input:   An input image file to be optimized/converted. Only .png, .bmp, and .kla file types are accepted.\n\n";
     cout << "output:  The output folder and file name. File extension (if exists) will be ignored. If omitted, SPOT will create\n";
     cout << "         a <spot/input> folder and the input file's name will be used as output file name.\n\n";
-    cout << "format:  Output file formats: kmscg2o. Select as many as you want in any order:\n";
+    cout << "format:  Output file formats: kmscg2opb. Select as many as you want in any order:\n";
     cout << "         k - .kla (Koala - 10003 bytes)\n";
     cout << "         m - .map (bitmap data)\n";
     cout << "         s - .scr (screen RAM data)\n";
@@ -2258,12 +3955,17 @@ void ShowHelp()
     cout << "         g - .bgc (background color)\n";
     cout << "         2 - .ccr (compressed color RAM data)\n";
     cout << "         o - .obm (optimized bitmap - 9503 bytes)\n";
+    cout << "         p - .png (portable network graphics)\n";
+    cout << "         b - .bmp (bitmap)\n";
     cout << "         This parameter is optional. If omitted, then the default Koala file will be created.\n\n";
     cout << "bgcolor: Output background color(s): 0123456789abcdef or x. SPOT will only create C64 files using the selected\n";
     cout << "         background color(s). If x is used as value then only the first possible background color will be used,\n";
     cout << "         all other possible background colors will be ignored. If this option is omitted, then SPOT will generate\n";
     cout << "         output files using all possible background colors. If more than one background color is possible (and\n";
     cout << "         allowed) then SPOT will append the background color to the output file name.\n\n";
+    cout << "-v       Verbose mode.\n\n";
+    cout << "-s       Simple/speedy mode. Only one output candidate is created base on the predicted best color placement order.\n";
+    cout << "         This mode can be helpful in the case of huge, non-standard images where standard mode could be extremely slow.\n\n";
     cout << "Examples\n";
     cout << "--------\n\n";
     cout << "spot picture.bmp -o newfolder/newfile -f msc -b 0\n";
@@ -2294,22 +3996,26 @@ int main(int argc, char* argv[])
 {
     cout << "\n";
     cout << "*********************************************************************\n";
-    cout << "SPOT 1.3 - Sparta's Picture Optimizing Tool for the C64 (C) 2021-2024\n";
+    cout << "SPOT 1.4 - Sparta's Picture Optimizing Tool for the C64 (C) 2021-2025\n";
     cout << "*********************************************************************\n";
     cout << "\n";
 
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/test/a_s.png";
-        OutFile = "c:/spot/test/a_s";
-        CmdOptions = "k";
+        InFile = "c:/spot/Benchmark2/01.png";
+        OutFile = "c:/spot/Benchmark2/01_14";
+        CmdOptions = "kmsc";
         CmdColors = "x";
+        VerboseMode = true;
+        //OnePassMode = true;
 #else
         cout << "Usage: spot input [options]\n";
-        cout << "options:    - o [output path and filename]\n";
-        cout << "            - f [output format(s)]\n";
-        cout << "            - b [background color(s)]\n";
+        cout << "options:    -o [output path and filename without extension]\n";
+        cout << "            -f [output format(s)]\n";
+        cout << "            -b [background color(s)]\n";
+        cout << "            -v (verbose mode)\n";
+        cout << "            -s (simple/speedy mode)\n";
         cout << "\n";
         cout << "Help:  spot -h\n";
         cout << "\n";
@@ -2376,6 +4082,15 @@ int main(int argc, char* argv[])
                 return EXIT_FAILURE;
             }
         }
+        else if ((args[i] == "-v") || (args[i] == "-V"))        //verbose mode
+        {
+            VerboseMode = true;
+            cout << "Verbose mode on.\n";
+        }
+        else if ((args[i] == "-s") || (args[i] == "-S"))        //simple/speedy, 1-pass mode
+        {
+            OnePassMode = true;
+        }
         else
         {
             cerr << "***CRITICAL***\tUnrecognized option: " << args[i] << "\n";
@@ -2383,6 +4098,12 @@ int main(int argc, char* argv[])
         }
         i++;
     }
+
+    if (VerboseMode && OnePassMode)
+    {
+        cout << "Simple/speedy mode on.\n";
+    }
+
 
     for (size_t i = 0; i < CmdOptions.size(); i++)
     {

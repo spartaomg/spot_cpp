@@ -29,7 +29,7 @@ CC = g++
 CFLAGS = -O3 -Wall -std=c++17 -fexceptions -c
 RESFLAGS = -J rc -O coff -i
 
-OBJ = $(DIR_OBJ)/spot.o $(DIR_OBJ)/c64palettes.o $(DIR_OBJ)/hungarian.o $(DIR_OBJ)/paletteconvtab.o $(DIR_OBJ)/thirdparty/lodepng.o
+OBJ = $(DIR_OBJ)/spot.o $(DIR_OBJ)/c64palettes.o $(DIR_OBJ)/hungarian.o $(DIR_OBJ)/compress.o $(DIR_OBJ)/paletteconvtab.o $(DIR_OBJ)/thirdparty/lodepng.o
 
 ifeq ($(OS),Windows_NT)
 	OBJ += $(DIR_OBJ)/spot.res
