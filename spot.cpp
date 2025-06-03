@@ -78,6 +78,7 @@ bool OutputObm = false;
 bool OutputPng = false;
 bool OutputBmp = false;
 bool OutputBgc = false;
+bool OutputKlx = false;
 
 int NumBGCols = -1;
 unsigned char BGCol, BGCols[16]{};  //Background color
@@ -98,13 +99,10 @@ int ColTabSize = 0;
 //  TODO: REPLACE ARRAYS WITH VECTORS
 //--------------------------------------
 
-unsigned char* ColTab0, * ColTab1, * ColTab2, * ColTab3;
-unsigned char* Pic, * PicMsk;       //Original picture array
-unsigned char* BMP;                 //C64 bitmap array
-
-unsigned char* ColR, * ColRAM, * ScrHi, * ScrLo, * ScrRAM, * ColMap, * BGC;
-
-unsigned char* ColRAMCol, * ScrHiCol, * ScrLoCol;
+vector <unsigned char> ColTab0, ColTab1, ColTab2, ColTab3;
+vector <unsigned char> Pic, PicMsk;       //Original picture
+vector <unsigned char> BMP;                //C64 bitmap
+vector <unsigned char> ColR, ColRAM, ScrHi, ScrLo, ScrRAM, ColMap;
 
 typedef struct tagBITMAPFILEHEADER {
     int16_t bfType;
@@ -667,11 +665,36 @@ void RebuildImage(string OutFileName)
         SaveFile += "_" + ConvertIntToHextString((int)BGCol, 2);
     }
 
+    if (OutputKlx)
+    {
+        vector<unsigned char> KLX(10 * ColTabSize + 5, 0);
+        KLX[0] = (PicW * 2) % 256;
+        KLX[1] = (PicW * 2) >> 8;
+        KLX[2] = PicH % 256;
+        KLX[3] = PicH >> 8;
+
+        for (int i = 0; i < ColTabSize * 8; i++)
+        {
+            KLX[4 + i] = BMP[i];
+        }
+
+        for (int i = 0; i < ColTabSize; i++)
+        {
+            KLX[(size_t)(ColTabSize * 8) + 4 + i] = ScrRAM[i];
+            KLX[(size_t)(ColTabSize * 9) + 4 + i] = ColR[i];
+        }
+
+        KLX[(size_t)(ColTabSize * 10) + 4] = BGCol;
+
+        //Save KLX
+        WriteBinaryFile(SaveFile + ".klx", KLX);
+    }
+
     if ((OutputKla) && (CharRow >= 25) && (CharCol >= 40))
     {
         //Save Koala only if bitmap is at least 320x200 pixels
-        vector <unsigned char> KLA;
-        KLA.resize(10003);
+        vector <unsigned char> KLA(10003,0);
+
         KLA[1] = 0x60;
         KLA[10002] = BGCol;
 
@@ -703,38 +726,39 @@ void RebuildImage(string OutFileName)
 
     if (OutputMap)
     {
-        WriteBinaryFile(SaveFile + ".map", BMP, CharCol * PicH);
+        WriteBinaryFile(SaveFile + ".map", BMP);
     }
 
     if (OutputCol)
     {
-        WriteBinaryFile(SaveFile + ".col", ColR, ColTabSize);
+        WriteBinaryFile(SaveFile + ".col", ColR);
     }
 
     if (OutputScr)
     {
-        WriteBinaryFile(SaveFile + ".scr", ScrRAM, ColTabSize);
+        WriteBinaryFile(SaveFile + ".scr", ScrRAM);
     }
 
     if (OutputBgc)
     {
-        BGC[0] = BGCol;
-        WriteBinaryFile(SaveFile + ".bgc", BGC, 1);
+        vector <unsigned char> vBGC(1, BGCol);
+        WriteBinaryFile(SaveFile + ".bgc", vBGC);
     }
 
-    unsigned char* CCR{};
-    CCR = new unsigned char[ColTabSize / 2] {};
+    vector <unsigned char> vCCR(ColTabSize / 2, 0);
+    //unsigned char* CCR{};
+    //CCR = new unsigned char[ColTabSize / 2] {};
 
     for (int I = 0; I < ColTabSize / 2; I++)
     {
-        CCR[I] = ((ColR[I * 2] % 16) * 16) + (ColR[(I * 2) + 1] % 16);
+        vCCR[I] = ((ColR[I * 2] % 16) * 16) + (ColR[(I * 2) + 1] % 16);
     }
 
     //Save compressed ColorRAM wih halfbytes combined
 
     if (OutputCcr)
     {
-        WriteBinaryFile(SaveFile + ".ccr", CCR, ColTabSize / 2);
+        WriteBinaryFile(SaveFile + ".ccr", vCCR);
     }
 
     //Save optimized bitmap file format only if bitmap is at least 320x200 pixels
@@ -779,19 +803,17 @@ void RebuildImage(string OutFileName)
         {
             for (size_t CX = 0; CX < 20; CX++)
             {
-                OBM[9002 + (CY * 20) + CX] = CCR[((StartCY + CY) * (CharCol / 2)) + StartCX + CX];
+                OBM[9002 + (CY * 20) + CX] = vCCR[((StartCY + CY) * (CharCol / 2)) + StartCX + CX];
             }
         }
 
         //Save optimized bitmap file format
         WriteBinaryFile(SaveFile + ".obm", OBM);
     }
-
-    delete[] CCR;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
-
+/*
 int CalculateFragmentation()
 {
     int LastOffset[6][256]{};   //The last offset of each possible value (0-255) in each of the 6 different combinations
@@ -856,7 +878,7 @@ int CalculateFragmentation()
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
-
+*/
 int FindBestLayout()
 {
     int FragSR0a = 0;   //Hi * 16 + Lo
@@ -871,7 +893,7 @@ int FindBestLayout()
 
     unsigned char LastSR0a = (ScrHi[0] * 16 + ScrLo[0]) ^ 0xff;
     unsigned char LastSR0b = (ScrLo[0] * 16 + ScrHi[0]) ^ 0xff;
-    unsigned char LastCR0 = ColRAM[0] ^0x0f;
+    unsigned char LastCR0 = ColRAM[0] ^ 0x0f;
     unsigned char LastSR1a = (ScrHi[0] * 16 + ColRAM[0]) ^ 0xff;
     unsigned char LastSR1b = (ColRAM[0] * 16 + ScrHi[0]) ^ 0xff;
     unsigned char LastCR1 = ScrLo[0] ^ 0x0f;
@@ -954,7 +976,6 @@ int FindBestLayout()
         ColSR2a[ScrLo[i] * 16 + ColRAM[i]] = 1;
         ColSR2b[ColRAM[i] * 16 + ScrLo[i]] = 1;
         ColCR2[ScrHi[i]] = 1;
-
     }
 
     int NumColSR0a = 0;
@@ -2761,13 +2782,18 @@ void RenderImage(int Layout)
 
 bool OptimizeKoala()
 {    
-    ScrHi = new unsigned char[ColTabSize] {};
-    ScrLo = new unsigned char[ColTabSize] {};
-    ScrRAM = new unsigned char[ColTabSize] {};
-    ColRAM = new unsigned char[ColTabSize] {};
-    ColR = new unsigned char[ColTabSize] {};
-    BGC = new unsigned char[1];
-    ColMap = new unsigned char[16 * ColTabSize] {};             //We still have UnusedColor = 16 here, so we need an extra map!!!
+    ScrHi.clear();
+    ScrHi.resize(ColTabSize, 0);
+    ScrLo.clear();
+    ScrLo.resize(ColTabSize, 0);
+    ScrRAM.clear();
+    ScrRAM.resize(ColTabSize, 0);
+    ColRAM.clear();
+    ColRAM.resize(ColTabSize, 0);
+    ColR.clear();
+    ColR.resize(ColTabSize, 0);
+    ColMap.clear();
+    ColMap.resize(ColTabSize * 16, 0);             //We still have UnusedColor = 16 here, so we need an extra map???
 
     int C64Col[17]{};                                           //0x00-0x10 (UnusedColor = 0x10)
     int NumSeq[16]{};
@@ -2889,11 +2915,12 @@ bool OptimizeKoala()
 
     sort(ColorSpace.begin(), ColorSpace.end(), SortBySeqLen);
 
+    /*
     if (OnePassMode)
     {
-        fill_n(ColRAM, ColTabSize, 255);
-        fill_n(ScrHi, ColTabSize, 255);
-        fill_n(ScrLo, ColTabSize, 255);
+        fill(ColRAM.begin(), ColRAM.end(), 255);
+        fill(ScrHi.begin(), ScrHi.end(), 255);
+        fill(ScrLo.begin(), ScrLo.end(), 255);
 
         for (int i = 0; i < 15; i++)
         {
@@ -2928,47 +2955,80 @@ bool OptimizeKoala()
     }
     else
     {
-        for (int c0 = 0; c0 < Iterations; c0++)
+*/
+    for (int c0 = 0; c0 < Iterations; c0++)
+    {
+        for (int c1 = 0; c1 < Iterations; c1++)
         {
-            for (int c1 = 0; c1 < Iterations; c1++)
+            if (c1 != c0)
             {
-                if (c1 != c0)
+                for (int c2 = 0; c2 < Iterations; c2++)
                 {
-                    for (int c2 = 0; c2 < Iterations; c2++)
+                    if ((c2 != c0) && (c2 != c1))
                     {
-                        if ((c2 != c0) && (c2 != c1))
+                        for (int c3 = 0; c3 < Iterations; c3++)
                         {
-                            for (int c3 = 0; c3 < Iterations; c3++)
+                            if ((c3 != c0) && (c3 != c1) && (c3 != c2))
                             {
-                                if ((c3 != c0) && (c3 != c1) && (c3 != c2))
+                                fill(ColRAM.begin(), ColRAM.end(), 255);
+                                fill(ScrHi.begin(), ScrHi.end(), 255);
+                                fill(ScrLo.begin(), ScrLo.end(), 255);
+
+                                if (ColorSpace[c0].Used) AssignColor(ColorSpace[c0].Color);
+                                if (ColorSpace[c1].Used) AssignColor(ColorSpace[c1].Color);
+                                if (ColorSpace[c2].Used) AssignColor(ColorSpace[c2].Color);
+                                if (ColorSpace[c3].Used) AssignColor(ColorSpace[c3].Color);
+
+                                for (int i = 0; i < 15; i++)
                                 {
-                                    fill_n(ColRAM, ColTabSize, 255);
-                                    fill_n(ScrHi, ColTabSize, 255);
-                                    fill_n(ScrLo, ColTabSize, 255);
-
-                                    if (ColorSpace[c0].Used) AssignColor(ColorSpace[c0].Color);
-                                    if (ColorSpace[c1].Used) AssignColor(ColorSpace[c1].Color);
-                                    if (ColorSpace[c2].Used) AssignColor(ColorSpace[c2].Color);
-                                    if (ColorSpace[c3].Used) AssignColor(ColorSpace[c3].Color);
-
-                                    for (int i = 0; i < 15; i++)
+                                    if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
                                     {
-                                        if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
+                                        AssignColor(ColorSpace[i].Color);
+                                    }
+                                }
+
+                                for (int i = 0; i < 2; i++)
+                                {
+                                    RelocateSingleBlocks();
+                                    FillUnusedBlocks();
+                                    FixOverlaps();
+                                    MoveMatchingSingles();
+                                }
+
+                                int Layout = FindBestLayout();
+
+                                if (OnePassMode)
+                                {
+                                    if ((BestNumFrag < BestFrag) && (BestNumFragCol < BestFragCol))
+                                    {
+                                        RenderImage(Layout);
+
+                                        BestFrag = BestNumFrag;
+                                        BestFragCol = BestNumFragCol;
+
+                                        Predictors.push_back(BestNumFrag + BestNumFragCol);
+
+                                        if (VerboseMode)
                                         {
-                                            AssignColor(ColorSpace[i].Color);
+                                            cout << "Output candidate #" << Predictors.size() << " with color order ";
+                                            cout << (hex);
+                                            if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
+                                            if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
+                                            if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
+                                            if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
+                                            for (int i = 0; i < 15; i++)
+                                            {
+                                                if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
+                                                {
+                                                    cout << (int)ColorSpace[i].Color;
+                                                }
+                                            }
+                                            cout << (dec) << "\n";
                                         }
                                     }
-
-                                    for (int i = 0; i < 2; i++)
-                                    {
-                                        RelocateSingleBlocks();
-                                        FillUnusedBlocks();
-                                        FixOverlaps();
-                                        MoveMatchingSingles();
-                                    }
-
-                                    int Layout = FindBestLayout();
-
+                                }
+                                else
+                                {
                                     if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
                                     {
                                         RenderImage(Layout);
@@ -2980,7 +3040,7 @@ bool OptimizeKoala()
 
                                         if (VerboseMode)
                                         {
-                                            cout << "Output candidate #" << Predictors.size() << " with color order ";                                           
+                                            cout << "Output candidate #" << Predictors.size() << " with color order ";
                                             cout << (hex);
                                             if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
                                             if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
@@ -3004,6 +3064,7 @@ bool OptimizeKoala()
             }
         }
     }
+    //}
     /*
     sort(ColorSpace.begin(), ColorSpace.end(), SortByCompactness);
 
@@ -3026,9 +3087,9 @@ bool OptimizeKoala()
                             {
                                 if ((c3 != c0) && (c3 != c1) && (c3 != c2))
                                 {
-                                    fill_n(ColRAM, ColTabSize, 255);
-                                    fill_n(ScrHi, ColTabSize, 255);
-                                    fill_n(ScrLo, ColTabSize, 255);
+                                    fill(ColRAM.begin(), ColRAM.end(), 255);
+                                    fill(ScrHi.begin(), ScrHi.end(), 255);
+                                    fill(ScrLo.begin(), ScrLo.end(), 255);
 
                                     if (ColorSpace[c0].Used) AssignColor(ColorSpace[c0].Color);
                                     if (ColorSpace[c1].Used) AssignColor(ColorSpace[c1].Color);
@@ -3089,37 +3150,42 @@ bool OptimizeKoala()
         }
     }
     */
-    size_t IdxBest = 0;
-    if (vecBMP.size() > 1)
-    {
-        for (size_t i = 0; i < vecBMP.size(); i++)
-        {
-            if (VerboseMode)
-            {
-                cout << "Analyzing output candidate #" << i + 1 << ".";
-            }
 
-            int ThisCompress = CalculateCompressedSize(vecBMP[i]);
-            
-            if (ThisCompress < BestCompress)
+    size_t IdxBest = Predictors.size() - 1;
+
+    if (!OnePassMode)
+    {
+        if (vecBMP.size() > 1)
+        {
+            for (size_t i = 0; i < vecBMP.size(); i++)
             {
-                IdxBest = i;
-                BestCompress = ThisCompress;
-            }
-            else if ((ThisCompress == BestCompress) && (Predictors[i] < Predictors[IdxBest]))
-            {
-                IdxBest = i;
-                BestCompress = ThisCompress;
-            }
-            
-            if (VerboseMode)
-            {
+                if (VerboseMode)
+                {
+                    cout << "Analyzing output candidate #" << i + 1 << ".";
+                }
+
+                int ThisCompress = CalculateCompressedSize(vecBMP[i]);
+
+                if (ThisCompress < BestCompress)
+                {
+                    IdxBest = i;
+                    BestCompress = ThisCompress;
+                }
+                else if ((ThisCompress == BestCompress) && (Predictors[i] < Predictors[IdxBest]))
+                {
+                    IdxBest = i;
+                    BestCompress = ThisCompress;
+                }
+
+                if (VerboseMode)
+                {
 #ifdef DEBUG
-                cout << " Cost: " << ThisCompress << " bytes. Best candidate: #" << IdxBest + 1 << "\n";
+                    cout << " Cost: " << ThisCompress << " bytes. Best candidate: #" << IdxBest + 1 << "\n";
 #else
-                cout << " Best candidate: #" << IdxBest + 1 << "\n";
+                    cout << " Best candidate: #" << IdxBest + 1 << "\n";
 #endif // DEBUG
 
+                }
             }
         }
     }
@@ -3144,14 +3210,6 @@ bool OptimizeKoala()
 
     RebuildImage(OutFile);
 
-    delete[] ColRAM;
-    delete[] ColR;
-    delete[] ScrLo;
-    delete[] ScrHi;
-    delete[] ScrRAM;
-    delete[] ColMap;
-    delete[] BGC;
-
     return true;
 }
 
@@ -3172,23 +3230,26 @@ bool OptimizeImage()
         }
     }
 
-    Pic = new unsigned char[PicW * PicH] {};
-    PicMsk = new unsigned char[PicW * PicH] {};
+    Pic.clear();
+    Pic.resize(PicW * PicH, 0);
+
+    PicMsk.clear();
+    PicMsk.resize(PicW * PicH, 0);
 
     ColTabSize = CharCol * CharRow;
 
-    unsigned char* CT0,* CT1,* CT2,* CT3;
-    CT0 = new unsigned char[ColTabSize] {};
-    CT1 = new unsigned char[ColTabSize] {};
-    CT2 = new unsigned char[ColTabSize] {};
-    CT3 = new unsigned char[ColTabSize] {};
+    vector <unsigned char> CT0(ColTabSize, UnusedColor), CT1(ColTabSize, UnusedColor), CT2(ColTabSize, UnusedColor), CT3(ColTabSize, UnusedColor);
 
-    ColTab0 = new unsigned char[ColTabSize] {};
-    ColTab1 = new unsigned char[ColTabSize] {};
-    ColTab2 = new unsigned char[ColTabSize] {};
-    ColTab3 = new unsigned char[ColTabSize] {};
-
-    BMP = new unsigned char[CharCol * PicH] {};
+    ColTab0.clear();
+    ColTab0.resize(ColTabSize, 0);
+    ColTab1.clear();
+    ColTab1.resize(ColTabSize, 0);
+    ColTab2.clear();
+    ColTab2.resize(ColTabSize, 0);
+    ColTab3.clear();
+    ColTab3.resize(ColTabSize, 0);
+    BMP.clear();
+    BMP.resize(CharCol * PicH, 0);
 
     //Fetch R component of the RGB color code for each pixel, convert it to C64 palette, and save it to Pic array
     for (size_t Y = 0; Y < PicH; Y++)
@@ -3197,15 +3258,6 @@ bool OptimizeImage()
         {
             Pic[(Y * PicW) + X] = paletteconvtab[GetPixel(C64Bitmap, X * 2, Y, PicW).R];
         }
-    }
-
-    //Fill all three Color Tabs with a value that is not used by either the image or the C64
-    for (int i = 0; i < ColTabSize; i++)
-    {
-        CT0[i] = UnusedColor;
-        CT1[i] = UnusedColor;
-        CT2[i] = UnusedColor;
-        CT3[i] = UnusedColor;
     }
 
     //Sort R values into 3 Color Tabs per char
@@ -3227,6 +3279,7 @@ bool OptimizeImage()
                     if ((CT0[CharIndex] == V) || (CT1[CharIndex] == V) || (CT2[CharIndex] == V) || (CT3[CharIndex] == V))
                     {
                         //Color can only be stored once
+                        continue;
                     }
                     else if (CT1[CharIndex] == UnusedColor)
                     {
@@ -3394,18 +3447,6 @@ bool OptimizeImage()
             }
         }
     }
-
-    delete[] Pic;
-    delete[] PicMsk;
-    delete[] CT0;
-    delete[] CT1;
-    delete[] CT2;
-    delete[] CT3;
-    delete[] ColTab0;
-    delete[] ColTab1;
-    delete[] ColTab2;
-    delete[] ColTab3;
-    delete[] BMP;
 
     return ReturnStatus;  
 }
@@ -3837,9 +3878,10 @@ bool ImportFromKoala()
     CharCol = PicW / 4;
     CharRow = PicH / 8;
 
-    ColTab1 = new unsigned char[CharCol * CharRow] {};
-    ColTab2 = new unsigned char[CharCol * CharRow] {};
-    ColTab3 = new unsigned char[CharCol * CharRow] {};
+
+    ColTab1.resize(CharCol * CharRow, 0);
+    ColTab2.resize(CharCol * CharRow, 0);
+    ColTab3.resize(CharCol * CharRow, 0);
 
     for (size_t i = 0; i < 1000; i++)
     {
@@ -3921,9 +3963,112 @@ bool ImportFromKoala()
         }
     }
 
-    delete[] ColTab1;
-    delete[] ColTab2;
-    delete[] ColTab3;
+    return OptimizeImage();
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool ImportFromKLX()
+{
+    PrgLen = ReadBinaryFile(InFile, ImgRaw);
+
+    if (PrgLen == -1)
+    {
+        cerr << "***CRITICAL***\tUnable to open this klx file.\n";
+        return false;
+    }
+
+    PicW = (ImgRaw[0] + ImgRaw[1] * 256) / 2;         //Double pixels, this is the effective width
+    PicH = ImgRaw[2] + ImgRaw[3] * 256;
+
+    CharCol = PicW / 4;
+    CharRow = PicH / 8;
+
+    ColTab1.resize(CharCol * CharRow, 0);
+    ColTab2.resize(CharCol * CharRow, 0);
+    ColTab3.resize(CharCol * CharRow, 0);
+
+    ColTabSize = (ImgRaw.size() - 5) / 10;
+
+    for (int i = 0; i < ColTabSize; i++)
+    {
+        ColTab1[i] = ImgRaw[(size_t)(8 * ColTabSize) + 4 + i] / 16;
+        ColTab2[i] = ImgRaw[(size_t)(8 * ColTabSize) + 4 + i] % 16;
+        ColTab3[i] = ImgRaw[(size_t)(9 * ColTabSize) + 4 + i] % 16;
+    }
+
+    for (int i = 1; i < 16; i++)
+    {
+        BGCols[i] = 0xff;
+    }
+    BGCols[0] = ImgRaw[ImgRaw.size() - 1];
+    BGCol = BGCols[0];
+
+    C64Bitmap.resize((size_t)PicW * 2 * PicH * 4);
+
+    Image.resize((size_t)PicW * 2 * PicH * 4);
+
+    int CI = 0;         //Color tab index
+    int PxI = 0;        //Pixel index
+    unsigned char BitMask = 0;
+    unsigned char Bits = 0;
+    unsigned char Col = 0;
+
+    for (size_t Y = 0; Y < PicH; Y++)
+    {
+        for (size_t X = 0; X < PicW; X++)
+        {
+            CI = ((Y / 8) * CharCol) + (X / 4);                      //ColorTab index from X and Y
+            PxI = ((X / 4) * 8) + (Y % 8) + ((Y / 8) * PicW * 2);    //Pixel index in Bitmap
+
+            if (X % 4 == 0)
+            {
+                BitMask = 0xc0;
+            }
+            else if (X % 4 == 1)
+            {
+                BitMask = 0x30;
+            }
+            else if (X % 4 == 2)
+            {
+                BitMask = 0x0c;
+            }
+            else if (X % 4 == 3)
+            {
+                BitMask = 0x03;
+            }
+
+            Bits = (ImgRaw[(size_t)4 + PxI] & BitMask);
+
+            if (Bits == 0)
+            {
+                Col = BGCol;
+            }
+            else if ((Bits == 0x01) || (Bits == 0x04) || (Bits == 0x10) || (Bits == 0x40))
+            {
+                Col = ColTab1[CI];
+            }
+            else if ((Bits == 0x02) || (Bits == 0x08) || (Bits == 0x20) || (Bits == 0x80))
+            {
+                Col = ColTab2[CI];
+            }
+            else if ((Bits == 0x03) || (Bits == 0x0c) || (Bits == 0x30) || (Bits == 0xc0))
+            {
+                Col = ColTab3[CI];
+            }
+
+            //color C64Color{ oldc64palettes[Col], oldc64palettes[Col + 16], oldc64palettes[Col + 32],0 };
+
+            int C64Col = c64palettes[VICE_36_Pixcen * 16 + Col];
+
+            color C64Color{ (unsigned char)((C64Col >> 16) & 0xff),(unsigned char)((C64Col >> 8) & 0xff),(unsigned char)(C64Col & 0xff) };
+
+            SetPixel(Image, 2 * X, Y, PicW, C64Color);
+            SetPixel(Image, (2 * X) + 1, Y, PicW, C64Color);
+            SetPixel(C64Bitmap, 2 * X, Y, PicW, C64Color);
+            SetPixel(C64Bitmap, (2 * X) + 1, Y, PicW, C64Color);
+        }
+    }
 
     return OptimizeImage();
 }
@@ -4003,12 +4148,12 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/Benchmark2/01.png";
-        OutFile = "c:/spot/Benchmark2/01_14";
-        CmdOptions = "kmsc";
+        InFile = "c:/spot/Benchmark/ds.png";
+        OutFile = "c:/spot/Benchmark/ds";
+        CmdOptions = "x";
         CmdColors = "x";
         VerboseMode = true;
-        //OnePassMode = true;
+        OnePassMode = true;
 #else
         cout << "Usage: spot input [options]\n";
         cout << "options:    -o [output path and filename without extension]\n";
@@ -4119,6 +4264,7 @@ int main(int argc, char* argv[])
     OutputObm = (CmdOptions.find('o') != string::npos);
     OutputPng = (CmdOptions.find('p') != string::npos);
     OutputBmp = (CmdOptions.find('b') != string::npos);
+    OutputKlx = (CmdOptions.find('x') != string::npos);
 
     for (size_t i = 0; i < CmdColors.size(); i++)
     {
@@ -4163,7 +4309,7 @@ int main(int argc, char* argv[])
     }
 
     //Check we have the right input file type
-    if ((FExt != "png") && (FExt != "bmp") && (FExt != "kla") && (FExt != "koa"))
+    if ((FExt != "png") && (FExt != "bmp") && (FExt != "kla") && (FExt != "koa") && (FExt != "klx"))
     {
         cerr << "***CRITICAL***\tSPOT only accepts PNG, BMP and Koala (.kla, .koa) input file types!\n";
         return EXIT_FAILURE;
@@ -4197,6 +4343,11 @@ int main(int argc, char* argv[])
     if ((FExt == "kla") || (FExt == "koa"))
     {
         if (!ImportFromKoala())
+            return EXIT_FAILURE;
+    }
+    else if (FExt == "klx")
+    {
+        if (!ImportFromKLX())
             return EXIT_FAILURE;
     }
     else if ((FExt == "png") ||(FExt == "bmp"))

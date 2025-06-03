@@ -469,7 +469,6 @@ private:
                     {
                         break;
                     }
-
                 }
             }
         }
