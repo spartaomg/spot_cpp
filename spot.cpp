@@ -14,6 +14,7 @@
 //new switch -v for verbose mode
 //new switch -s for simple/speedy mode - bypasses multiple output candidate creation and analysis - helpful in case of huge, non-standard images
 //accept VICE 384x272px PNG screenshots as input
+//KoalaX (klx) file format for large, non-standard bitmaps (layout similar to Koala: bitmap width lo + hi, bitmap height lo + hi, bitmap pixel info, screen RAM, color RAM, background color)
 
 #include "common.h"
 
@@ -84,7 +85,7 @@ int NumBGCols = -1;
 unsigned char BGCol, BGCols[16]{};  //Background color
 const unsigned char UnusedColor = 0x10;
 
-vector <unsigned char> ImgRaw;      //raw PNG/BMP/Koala
+vector <unsigned char> ImgRaw;      //raw PNG/BMP/Koala/KoalaX
 vector <unsigned char> Image;       //pixels in RGBA format (4 bytes per pixel)
 vector <unsigned char> C64Bitmap;
 
@@ -94,10 +95,6 @@ unsigned char MUCMed[16]{};
 unsigned char MUCDen[16]{};
 
 int ColTabSize = 0;
-
-//--------------------------------------
-//  TODO: REPLACE ARRAYS WITH VECTORS
-//--------------------------------------
 
 vector <unsigned char> ColTab0, ColTab1, ColTab2, ColTab3;
 vector <unsigned char> Pic, PicMsk;       //Original picture
@@ -378,7 +375,6 @@ yuv RGB2YUV(int RGBColor)
     YUV.V = 0.615 * R - 0.51499 * G - 0.10001 * B;      //0.877 * (R - YUV.Y);
 
     return YUV;
-
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -452,15 +448,15 @@ bool SaveBmp()
 
     bfh.bfType = 0x4d42;
     bfh.bfOffBits = SizeOfBfh + sizeof(tagBITMAPINFOHEADER) + 0x40;
-    bfh.bfSize = 320 * 200 / 2 + bfh.bfOffBits;
+    bfh.bfSize = PicW * PicH + bfh.bfOffBits;
     bfh.bfReserved1 = 0;
     bfh.bfReserved2 = 0;
 
     BITMAPINFOHEADER bih{}; //0x28 bytes
 
     bih.biSize = sizeof(tagBITMAPINFOHEADER);
-    bih.biWidth = 320;
-    bih.biHeight = 200;
+    bih.biWidth = PicW * 2;
+    bih.biHeight = PicH;
     bih.biPlanes = 1;
     bih.biBitCount = 4;
     bih.biCompression = 0;
@@ -472,7 +468,13 @@ bool SaveBmp()
 
     //Pixcen Palette
     const int c64palette_size = 16;
-    unsigned int BmpPalette[c64palette_size] = { 0xff000000, 0xffffffff, 0xff894036, 0xff7abfc7, 0xff8a46ae, 0xff68a941, 0xff3e31a2, 0xffd0dc71, 0xff905f25, 0xff5c4700, 0xffbb776d, 0xff555555, 0xff808080, 0xffacea88, 0xff7c70da, 0xffababab };
+    unsigned int BmpPalette[c64palette_size] = {}; 
+    //0xff000000, 0xffffffff, 0xff894036, 0xff7abfc7, 0xff8a46ae, 0xff68a941, 0xff3e31a2, 0xffd0dc71, 0xff905f25, 0xff5c4700, 0xffbb776d, 0xff555555, 0xff808080, 0xffacea88, 0xff7c70da, 0xffababab };
+
+    for (size_t c = 0; c < 16; c++)
+    {
+        BmpPalette[c] = c64palettes[VICE_36_Pixcen * c64palette_size + c] | 0xff000000;
+    }
     
     unsigned char* BmpOut;
     BmpOut = new unsigned char[bfh.bfSize] {};
@@ -486,16 +488,16 @@ bool SaveBmp()
     memcpy(&BmpOut[SizeOfBfh], &bih, sizeof(bih));
     memcpy(&BmpOut[SizeOfBfh + sizeof(bih)], &BmpPalette, sizeof(BmpPalette));
 
-    for (int y = 0; y < 200; y++)
+    for (int y = 0; y < (int)PicH; y++)
     {
-        for (int x = 0; x < 160; x++)
+        for (int x = 0; x < (int)PicW; x++)
         {
-            unsigned int ThisCol = GetColor(C64Bitmap, x * 2, y, 160) + 0xff000000;
+            unsigned int ThisCol = GetColor(C64Bitmap, x * 2, y, PicW) + 0xff000000;
             for (int i = 0; i < 16; i++)
             {
                 if (ThisCol == BmpPalette[i])
                 {
-                    BmpOut[bfh.bfOffBits + (199 - y) * 160 + x] = i * 16 + i;
+                    BmpOut[bfh.bfOffBits + ((PicH - 1 - y) * PicW) + x] = i * 16 + i;
                     break;
                 }
             }
@@ -507,7 +509,6 @@ bool SaveBmp()
     delete[] BmpOut;
 
     return WriteReturn;
-
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -668,11 +669,11 @@ void RebuildImage(string OutFileName)
     if (OutputKlx)
     {
         vector<unsigned char> KLX(10 * ColTabSize + 5, 0);
-        KLX[0] = (PicW * 2) % 256;
-        KLX[1] = (PicW * 2) >> 8;
+        KLX[0] = PicW % 256;
+        KLX[1] = PicW >> 8;
         KLX[2] = PicH % 256;
         KLX[3] = PicH >> 8;
-
+        
         for (int i = 0; i < ColTabSize * 8; i++)
         {
             KLX[4 + i] = BMP[i];
@@ -745,20 +746,20 @@ void RebuildImage(string OutFileName)
         WriteBinaryFile(SaveFile + ".bgc", vBGC);
     }
 
-    vector <unsigned char> vCCR(ColTabSize / 2, 0);
+    vector <unsigned char> CCR(ColTabSize / 2, 0);
     //unsigned char* CCR{};
     //CCR = new unsigned char[ColTabSize / 2] {};
 
     for (int I = 0; I < ColTabSize / 2; I++)
     {
-        vCCR[I] = ((ColR[I * 2] % 16) * 16) + (ColR[(I * 2) + 1] % 16);
+        CCR[I] = ((ColR[I * 2] % 16) * 16) + (ColR[(I * 2) + 1] % 16);
     }
 
     //Save compressed ColorRAM wih halfbytes combined
 
     if (OutputCcr)
     {
-        WriteBinaryFile(SaveFile + ".ccr", vCCR);
+        WriteBinaryFile(SaveFile + ".ccr", CCR);
     }
 
     //Save optimized bitmap file format only if bitmap is at least 320x200 pixels
@@ -766,8 +767,7 @@ void RebuildImage(string OutFileName)
 
     if ((OutputObm) && (CharRow >= 25) && (CharCol >= 40))
     {
-        vector <unsigned char> OBM;
-        OBM.resize(9503);
+        vector <unsigned char> OBM(9503,0);
         OBM[1] = 0x60;
         OBM[9502] = BGCol;
 
@@ -803,7 +803,7 @@ void RebuildImage(string OutFileName)
         {
             for (size_t CX = 0; CX < 20; CX++)
             {
-                OBM[9002 + (CY * 20) + CX] = vCCR[((StartCY + CY) * (CharCol / 2)) + StartCX + CX];
+                OBM[9002 + (CY * 20) + CX] = CCR[((StartCY + CY) * (CharCol / 2)) + StartCX + CX];
             }
         }
 
@@ -3195,7 +3195,7 @@ bool OptimizeKoala()
         cout << "Creating output using candidate #" << IdxBest + 1 << "\n";
     }
 
-    for (size_t i = 0; i < (size_t) ColTabSize * 8; i++)
+    for (size_t i = 0; i < (size_t)ColTabSize * 8; i++)
     {
         BMP[i] = vecBMP[IdxBest][i];
     }
@@ -3221,15 +3221,16 @@ bool OptimizeImage()
 
     SaveImgFormat();
 
-    if ((OutputKla) || (OutputMap) || (OutputCol) || (OutputScr) || (OutputCcr) || (OutputObm))
+    if ((!OutputKla) && (!OutputMap) && (!OutputCol) && (!OutputScr) && (!OutputCcr) && (!OutputObm) && (!OutputKlx))
     {
-        if ((PicW % 4 != 0) || (PicH % 8 != 0))
-        {
-            cerr << "***CRITICAL***\tUnable to convert image to C64 formats. The dimensions of the image must be multiples of 8.\n";
-            return false;       //This return is OK, we are before creating dynamic arrays
-        }
+        return true;
     }
-
+    else if ((PicW % 4 != 0) || (PicH % 8 != 0))
+    {
+        cerr << "***CRITICAL***\tUnable to convert image to C64 formats. The dimensions of the image must be multiples of 8.\n";
+        return false;       //This return is OK, we are before creating dynamic arrays
+    }
+   
     Pic.clear();
     Pic.resize(PicW * PicH, 0);
 
@@ -3366,8 +3367,8 @@ bool OptimizeImage()
         {
             cout << "***INFO***\tMore than one possible background color has been identified.\n";
             cout << "\t\tThe background color will be appended to the output file names.\n";
-            cout << "\t\tIf you only want one output background color then please specify it in the command-line,\n";
-            cout << "\t\tOr use 'x' to only use the first possible background color.\n";
+            cout << "\t\tIf you only want one output background color then specify it using the -b switch,\n";
+            cout << "\t\tor use 'x' to only use the first possible background color.\n";
         }
 
         bool ColFound = false;
@@ -3463,7 +3464,7 @@ bool ConvertPicToC64Palette()
     CharCol = PicW / 4;
     CharRow = PicH / 8;
 
-    if (OutputKla)
+    if ((OutputKla) || (OutputObm))
     {
         if ((CharCol < 40) || (CharRow < 25))
         {
@@ -3864,137 +3865,45 @@ bool ImportFromKoala()
 
     if (PrgLen == -1)
     {
-        cerr << "***CRITICAL***\tUnable to open Koala file.\n";
-        return false;
-    }
-    else if (PrgLen != 10003)
-    {
-        cerr << "***CRITICAL***\tInvalid Koala file size. Unable optimize this Koala file\n";
+        cerr << "***CRITICAL***\tUnable to open Koala" << (FExt == "klx" ? "X" : "") << " file.\n";
         return false;
     }
 
-    PicW = 160;         //Double pixels, this is the effective width
-    PicH = 200;
-    CharCol = PicW / 4;
-    CharRow = PicH / 8;
+    size_t StartOffset{};
 
-
-    ColTab1.resize(CharCol * CharRow, 0);
-    ColTab2.resize(CharCol * CharRow, 0);
-    ColTab3.resize(CharCol * CharRow, 0);
-
-    for (size_t i = 0; i < 1000; i++)
+    if (FExt == "klx")
     {
-        ColTab1[i] = ImgRaw[8002 + i] / 16;
-        ColTab2[i] = ImgRaw[8002 + i] % 16;
-        ColTab3[i] = ImgRaw[9002 + i] % 16;
+        PicW = (ImgRaw[0] + ImgRaw[1] * 256);            //Double pixels, this is the effective width
+        PicH = ImgRaw[2] + ImgRaw[3] * 256;
+        StartOffset = 4;
     }
-
-    for (int i = 1; i < 16; i++)
+    else
     {
-        BGCols[i] = 0xff;
+        PicW = 160;         //Double pixels, this is the effective width
+        PicH = 200;
+        StartOffset = 2;
     }
-    BGCols[0] = ImgRaw[10002];
-    BGCol = BGCols[0];
-
-    C64Bitmap.resize((size_t)PicW * 2 * PicH * 4);
-
-    Image.resize((size_t)PicW * 2 * PicH * 4);
-
-    int CI = 0;         //Color tab index
-    int PxI = 0;        //Pixel index
-    unsigned char BitMask = 0;
-    unsigned char Bits = 0;
-    unsigned char Col = 0;
-
-    for (size_t Y= 0; Y< PicH; Y++)
-    {
-        for (size_t X = 0; X < PicW; X++)
-        {
-            CI = ((Y/ 8) * CharCol) + (X / 4);                      //ColorTab index from X and Y
-            PxI = ((X / 4) * 8) + (Y % 8) + ((Y/ 8) * PicW * 2);    //Pixel index in Bitmap
-
-            if (X % 4 == 0)
-            {
-                BitMask = 0xc0;
-            }
-            else if (X % 4 == 1)
-            {
-                BitMask = 0x30;
-            }
-            else if (X % 4 == 2)
-            {
-                BitMask = 0x0c;
-            }
-            else if (X % 4 == 3)
-            {
-                BitMask = 0x03;
-            }
-            
-            Bits = (ImgRaw[(size_t)2 + PxI] & BitMask);
-            
-            if (Bits == 0)
-            {
-                Col = BGCol;
-            }
-            else if ((Bits == 0x01) || (Bits == 0x04) || (Bits == 0x10) || (Bits == 0x40))
-            {
-                Col = ColTab1[CI];
-            }
-            else if ((Bits == 0x02) || (Bits == 0x08) || (Bits == 0x20) || (Bits == 0x80))
-            {
-                Col = ColTab2[CI];
-            }
-            else if ((Bits == 0x03) || (Bits == 0x0c) || (Bits == 0x30) || (Bits == 0xc0))
-            {
-                Col = ColTab3[CI];
-            }
-
-            //color C64Color{ oldc64palettes[Col], oldc64palettes[Col + 16], oldc64palettes[Col + 32],0 };
-
-            int C64Col = c64palettes[VICE_36_Pixcen * 16 + Col];
-
-            color C64Color{ (unsigned char)((C64Col >> 16) & 0xff),(unsigned char)((C64Col >> 8) & 0xff),(unsigned char)(C64Col & 0xff) };
-
-            SetPixel(Image, 2 * X, Y, PicW, C64Color);
-            SetPixel(Image, (2 * X) + 1, Y, PicW, C64Color);
-            SetPixel(C64Bitmap, 2 * X, Y, PicW, C64Color);
-            SetPixel(C64Bitmap, (2 * X) + 1, Y, PicW, C64Color);
-        }
-    }
-
-    return OptimizeImage();
-}
-
-//----------------------------------------------------------------------------------------------------------------------------------------------------------
-
-bool ImportFromKLX()
-{
-    PrgLen = ReadBinaryFile(InFile, ImgRaw);
-
-    if (PrgLen == -1)
-    {
-        cerr << "***CRITICAL***\tUnable to open this klx file.\n";
-        return false;
-    }
-
-    PicW = (ImgRaw[0] + ImgRaw[1] * 256) / 2;         //Double pixels, this is the effective width
-    PicH = ImgRaw[2] + ImgRaw[3] * 256;
 
     CharCol = PicW / 4;
     CharRow = PicH / 8;
 
-    ColTab1.resize(CharCol * CharRow, 0);
-    ColTab2.resize(CharCol * CharRow, 0);
-    ColTab3.resize(CharCol * CharRow, 0);
+    ColTabSize = CharCol * CharRow;
 
-    ColTabSize = (ImgRaw.size() - 5) / 10;
+    if (PrgLen != (size_t)ColTabSize * 10 + 1 + StartOffset)
+    {
+        cerr << "***CRITICAL***\tInvalid Koala" << (FExt == "klx" ? "X" : "") << " file size.\n";
+        return false;
+    }
+
+    ColTab1.resize(ColTabSize, 0);
+    ColTab2.resize(ColTabSize, 0);
+    ColTab3.resize(ColTabSize, 0);
 
     for (int i = 0; i < ColTabSize; i++)
     {
-        ColTab1[i] = ImgRaw[(size_t)(8 * ColTabSize) + 4 + i] / 16;
-        ColTab2[i] = ImgRaw[(size_t)(8 * ColTabSize) + 4 + i] % 16;
-        ColTab3[i] = ImgRaw[(size_t)(9 * ColTabSize) + 4 + i] % 16;
+        ColTab1[i] = ImgRaw[(size_t)(8 * ColTabSize) + StartOffset + i] / 16;
+        ColTab2[i] = ImgRaw[(size_t)(8 * ColTabSize) + StartOffset + i] % 16;
+        ColTab3[i] = ImgRaw[(size_t)(9 * ColTabSize) + StartOffset + i] % 16;
     }
 
     for (int i = 1; i < 16; i++)
@@ -4004,9 +3913,9 @@ bool ImportFromKLX()
     BGCols[0] = ImgRaw[ImgRaw.size() - 1];
     BGCol = BGCols[0];
 
-    C64Bitmap.resize((size_t)PicW * 2 * PicH * 4);
+    C64Bitmap.resize((size_t)PicW * 2 * PicH * 4, 0);
 
-    Image.resize((size_t)PicW * 2 * PicH * 4);
+    Image.resize((size_t)PicW * 2 * PicH * 4, 0);
 
     int CI = 0;         //Color tab index
     int PxI = 0;        //Pixel index
@@ -4038,7 +3947,7 @@ bool ImportFromKLX()
                 BitMask = 0x03;
             }
 
-            Bits = (ImgRaw[(size_t)4 + PxI] & BitMask);
+            Bits = (ImgRaw[StartOffset + PxI] & BitMask);
 
             if (Bits == 0)
             {
@@ -4077,22 +3986,25 @@ bool ImportFromKLX()
 
 void ShowHelp()
 {
-    cout << "SPOT is a small cross-platform command-line tool that converts .png, .bmp, and .kla images into C64 file formats\n";
+    cout << "SPOT is a small cross-platform command-line tool that converts .png, .bmp, .kla, and .klx images into C64 file formats\n";
     cout << "optimized for better compression. The following output file formats can be selected: Koala (.kla), bitmap (.map),\n";
-    cout << "screen RAM (.scr), color RAM (.col), compressed color RAM (.ccr)*, and optimized bitmap (.obm)**.\n\n";
+    cout << "screen RAM (.scr), color RAM (.col), compressed color RAM (.ccr)*, optimized bitmap (.obm)**, and KoalaX (.klx)***.\n\n";
     cout << "*Compressed color RAM (.ccr) format: two adjacent half bytes are combined to reduce the size of the color RAM to\n";
     cout << "500 bytes.\n\n";
     cout << "**Optimized bitmap (.obm) format: bitmap data is stored column wise. Screen RAM and compressed color RAM stored\n";
     cout << "row wise. First two bytes are address bytes ($00, $60) and the last one is the background color as in the Koala format.\n";
     cout << "File size: 9503 bytes. In most cases, this format compresses somewhat better than Koala but it also needs a more\n";
     cout << "complex display routine.\n\n";
+    cout << "***KoalaX (.klx) format: similar to the Koala format, but replaces the first two address header bytes with 4 bytes\n";
+    cout << "describing the width (double pixels) and height of the bitmap in low/high order. Bitmap pixel data, screen RAM, color\n";
+    cout << "RAM, and background color are stored similar to the Koala format. Meant for handling non-standard image sizes.\n\n";
     cout << "Usage\n";
     cout << "-----\n\n";
     cout << "spot input -o [output] -f [format] -b [bgcolor] -v -s\n\n";
-    cout << "input:   An input image file to be optimized/converted. Only .png, .bmp, and .kla file types are accepted.\n\n";
-    cout << "output:  The output folder and file name. File extension (if exists) will be ignored. If omitted, SPOT will create\n";
+    cout << "input:   An input image file to be optimized/converted. Only .png, .bmp, .kla, and .klx file types are accepted.\n\n";
+    cout << "-o       The output folder and file name. File extension (if exists) will be ignored. If omitted, SPOT will create\n";
     cout << "         a <spot/input> folder and the input file's name will be used as output file name.\n\n";
-    cout << "format:  Output file formats: kmscg2opb. Select as many as you want in any order:\n";
+    cout << "-f       Output file formats: kmscg2opb. Select as many as you want in any order:\n";
     cout << "         k - .kla (Koala - 10003 bytes)\n";
     cout << "         m - .map (bitmap data)\n";
     cout << "         s - .scr (screen RAM data)\n";
@@ -4102,14 +4014,15 @@ void ShowHelp()
     cout << "         o - .obm (optimized bitmap - 9503 bytes)\n";
     cout << "         p - .png (portable network graphics)\n";
     cout << "         b - .bmp (bitmap)\n";
-    cout << "         This parameter is optional. If omitted, then the default Koala file will be created.\n\n";
-    cout << "bgcolor: Output background color(s): 0123456789abcdef or x. SPOT will only create C64 files using the selected\n";
+    cout << "         x - .klx (KoalaX)";
+    cout << "         This parameter is optional. If omitted, then a Koala file will be created by default.\n\n";
+    cout << "-b       Output background color(s): 0123456789abcdef or x. SPOT will only create C64 files using the selected\n";
     cout << "         background color(s). If x is used as value then only the first possible background color will be used,\n";
     cout << "         all other possible background colors will be ignored. If this option is omitted, then SPOT will generate\n";
     cout << "         output files using all possible background colors. If more than one background color is possible (and\n";
     cout << "         allowed) then SPOT will append the background color to the output file name.\n\n";
     cout << "-v       Verbose mode.\n\n";
-    cout << "-s       Simple/speedy mode. Only one output candidate is created base on the predicted best color placement order.\n";
+    cout << "-s       Simple/speedy mode. Skips compression cost calculation and selects the best candidate based on predictors.\n";
     cout << "         This mode can be helpful in the case of huge, non-standard images where standard mode could be extremely slow.\n\n";
     cout << "Examples\n";
     cout << "--------\n\n";
@@ -4148,9 +4061,9 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/Benchmark/ds.png";
-        OutFile = "c:/spot/Benchmark/ds";
-        CmdOptions = "x";
+        InFile = "c:/spot/Large/big.klx";
+        OutFile = "c:/spot/Large/big_1";
+        CmdOptions = "b";
         CmdColors = "x";
         VerboseMode = true;
         OnePassMode = true;
@@ -4230,7 +4143,6 @@ int main(int argc, char* argv[])
         else if ((args[i] == "-v") || (args[i] == "-V"))        //verbose mode
         {
             VerboseMode = true;
-            cout << "Verbose mode on.\n";
         }
         else if ((args[i] == "-s") || (args[i] == "-S"))        //simple/speedy, 1-pass mode
         {
@@ -4244,11 +4156,14 @@ int main(int argc, char* argv[])
         i++;
     }
 
-    if (VerboseMode && OnePassMode)
+    if (VerboseMode)
     {
-        cout << "Simple/speedy mode on.\n";
+        cout << "Verbose mode on.\n";
+        if (OnePassMode)
+        {
+            cout << "Simple/speedy mode on.\n";
+        }
     }
-
 
     for (size_t i = 0; i < CmdOptions.size(); i++)
     {
@@ -4340,14 +4255,9 @@ int main(int argc, char* argv[])
         OutFile = FPath + "spot/" + FName + "/" + FName;
     }
 
-    if ((FExt == "kla") || (FExt == "koa"))
+    if ((FExt == "kla") || (FExt == "koa") || (FExt == "klx"))
     {
         if (!ImportFromKoala())
-            return EXIT_FAILURE;
-    }
-    else if (FExt == "klx")
-    {
-        if (!ImportFromKLX())
             return EXIT_FAILURE;
     }
     else if ((FExt == "png") ||(FExt == "bmp"))
