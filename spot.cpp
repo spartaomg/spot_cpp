@@ -3889,7 +3889,7 @@ bool ImportFromKoala()
 
     ColTabSize = CharCol * CharRow;
 
-    if (PrgLen != (size_t)ColTabSize * 10 + 1 + StartOffset)
+    if ((size_t)PrgLen != (size_t)ColTabSize * 10 + 1 + StartOffset)
     {
         cerr << "***CRITICAL***\tInvalid Koala" << (FExt == "klx" ? "X" : "") << " file size.\n";
         return false;
