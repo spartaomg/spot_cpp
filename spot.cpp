@@ -2915,47 +2915,6 @@ bool OptimizeKoala()
 
     sort(ColorSpace.begin(), ColorSpace.end(), SortBySeqLen);
 
-    /*
-    if (OnePassMode)
-    {
-        fill(ColRAM.begin(), ColRAM.end(), 255);
-        fill(ScrHi.begin(), ScrHi.end(), 255);
-        fill(ScrLo.begin(), ScrLo.end(), 255);
-
-        for (int i = 0; i < 15; i++)
-        {
-            if (ColorSpace[i].Used) AssignColor(ColorSpace[i].Color);
-        }
-
-        if (VerboseMode)
-        {
-            cout << "Output candidate #1 with color order ";
-            for (int i = 0; i < 15; i++)
-            {
-                if ((ColorSpace[i].Used))
-                {
-                    cout << (int)ColorSpace[i].Color;
-                }
-            }
-            cout << (dec) << "\n";
-        }
-
-        for (int i = 0; i < 2; i++)
-        {
-            RelocateSingleBlocks();
-            FillUnusedBlocks();
-            FixOverlaps();
-            MoveMatchingSingles();
-        }
-
-        int Layout = FindBestLayout();
-        RenderImage(Layout);
-
-        Predictors.push_back(BestNumFrag + BestNumFragCol);
-    }
-    else
-    {
-*/
     for (int c0 = 0; c0 < Iterations; c0++)
     {
         for (int c1 = 0; c1 < Iterations; c1++)
@@ -3064,12 +3023,11 @@ bool OptimizeKoala()
             }
         }
     }
-    //}
-    /*
+    
     sort(ColorSpace.begin(), ColorSpace.end(), SortByCompactness);
 
-    BestFrag = ColTabSize * 2;
-    BestFragCol = ColTabSize * 2;
+    //BestFrag = ColTabSize * 2;
+    //BestFragCol = ColTabSize * 2;
 
     if (!OnePassMode)
     {
@@ -3114,31 +3072,64 @@ bool OptimizeKoala()
 
                                     int Layout = FindBestLayout();
 
-                                    if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
+                                    if (OnePassMode)
                                     {
-                                        RenderImage(Layout);
-
-                                        BestFrag = BestNumFrag;
-                                        BestFragCol = BestNumFragCol;
-
-                                        Predictors.push_back(BestNumFrag + BestNumFragCol);
-
-                                        if (VerboseMode)
+                                        if ((BestNumFrag < BestFrag) && (BestNumFragCol < BestFragCol))
                                         {
-                                            cout << "Output candidate #" << Predictors.size() << " with color order ";
-                                            cout << (hex);
-                                            if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
-                                            if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
-                                            if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
-                                            if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
-                                            for (int i = 0; i < 15; i++)
+                                            RenderImage(Layout);
+
+                                            BestFrag = BestNumFrag;
+                                            BestFragCol = BestNumFragCol;
+
+                                            Predictors.push_back(BestNumFrag + BestNumFragCol);
+
+                                            if (VerboseMode)
                                             {
-                                                if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
+                                                cout << "Output candidate #" << Predictors.size() << " with color order ";
+                                                cout << (hex);
+                                                if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
+                                                if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
+                                                if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
+                                                if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
+                                                for (int i = 0; i < 15; i++)
                                                 {
-                                                    cout << (int)ColorSpace[i].Color;
+                                                    if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
+                                                    {
+                                                        cout << (int)ColorSpace[i].Color;
+                                                    }
                                                 }
+                                                cout << (dec) << "\n";
                                             }
-                                            cout << (dec) << "\n";
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
+                                        {
+                                            RenderImage(Layout);
+
+                                            BestFrag = BestNumFrag;
+                                            BestFragCol = BestNumFragCol;
+
+                                            Predictors.push_back(BestNumFrag + BestNumFragCol);
+
+                                            if (VerboseMode)
+                                            {
+                                                cout << "Output candidate #" << Predictors.size() << " with color order ";
+                                                cout << (hex);
+                                                if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
+                                                if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
+                                                if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
+                                                if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
+                                                for (int i = 0; i < 15; i++)
+                                                {
+                                                    if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
+                                                    {
+                                                        cout << (int)ColorSpace[i].Color;
+                                                    }
+                                                }
+                                                cout << (dec) << "\n";
+                                            }
                                         }
                                     }
                                 }
@@ -3149,7 +3140,6 @@ bool OptimizeKoala()
             }
         }
     }
-    */
 
     size_t IdxBest = Predictors.size() - 1;
 
@@ -4052,6 +4042,8 @@ void ShowHelp()
 
 int main(int argc, char* argv[])
 {
+    auto cstart = chrono::system_clock::now();
+
     cout << "\n";
     cout << "*********************************************************************\n";
     cout << "SPOT 1.4 - Sparta's Picture Optimizing Tool for the C64 (C) 2021-2025\n";
@@ -4061,12 +4053,12 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/Large/big.klx";
-        OutFile = "c:/spot/Large/big_1";
-        CmdOptions = "b";
+        InFile = "c:/spot/BurglarBenchmark/04.png";
+        OutFile = "c:/spot/BurglarBenchmark/04_14";
+        CmdOptions = "k";
         CmdColors = "x";
         VerboseMode = true;
-        OnePassMode = true;
+        //OnePassMode = true;
 #else
         cout << "Usage: spot input [options]\n";
         cout << "options:    -o [output path and filename without extension]\n";
@@ -4264,6 +4256,14 @@ int main(int argc, char* argv[])
     {
         if (!ImportFromImage())
             return EXIT_FAILURE;
+    }
+
+    auto cend = chrono::system_clock::now();
+    chrono::duration<double> elapsed_seconds = cend - cstart;
+
+    if (VerboseMode)
+    {
+        cout << "Elapsed time: " << elapsed_seconds.count() << "s\n";
     }
 
     cout << "Done!\n";
