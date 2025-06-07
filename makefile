@@ -8,7 +8,7 @@ ifeq ($(OS),Windows_NT)
 	DIR_BIN = bin/windows
 	DIR_OBJ = obj/windows
 	EXEC = $(DIR_BIN)/SPOT.exe
-	LINKFLAGS = -static -static-libgcc -static-libstdc++ -s -std=c++17 -o
+	LINKFLAGS = -static -static-libgcc -static-libstdc++ -s -std=c++20 -o
 else
 	EXEC = $(DIR_BIN)/spot
 
@@ -16,17 +16,17 @@ else
 	ifeq ($(UNAME),Linux)
 		DIR_BIN = bin/linux
 		DIR_OBJ = obj/linux
-		LINKFLAGS = -static -static-libgcc -static-libstdc++ -s -std=c++17 -o
+		LINKFLAGS = -static -static-libgcc -static-libstdc++ -s -std=c++20 -o
 	endif
 	ifeq ($(UNAME),Darwin)
 		DIR_BIN = bin/macos
 		DIR_OBJ = obj/macos
-		LINKFLAGS = -std=c++17 -o
+		LINKFLAGS = -std=c++20 -o
 	endif
 endif
 
 CC = g++
-CFLAGS = -O3 -Wall -std=c++17 -fexceptions -c
+CFLAGS = -O3 -Wall -std=c++20 -fexceptions -c
 RESFLAGS = -J rc -O coff -i
 
 OBJ = $(DIR_OBJ)/spot.o $(DIR_OBJ)/c64palettes.o $(DIR_OBJ)/hungarian.o $(DIR_OBJ)/compress.o $(DIR_OBJ)/paletteconvtab.o $(DIR_OBJ)/thirdparty/lodepng.o

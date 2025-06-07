@@ -52,24 +52,9 @@ private:
     {
         if (value <= 0) return 0;
 
-        int bitLength;
-#if defined(_MSC_VER)
-        unsigned long index;
-        _BitScanReverse(&index, (unsigned long)value);
-        bitLength = (int)index;
-#elif defined(__GNUC__) || defined(__clang__)
-        bitLength = 31 - __builtin_clz((unsigned int)value);
-#else
-        // Fallback to bit manipulation version
-        int temp = value;
-        bitLength = 0;
-        while (temp > 1) {
-            bitLength++;
-            temp >>= 1;
-        }
-#endif
-
+        int bitLength = bit_width((unsigned int)value) - 1;
         return 2 * bitLength + 1;
+        //return 2 * bit_width((unsigned int)value) - 1;
     }
 
     inline int getOffsetBitLength(int offset) const
@@ -350,24 +335,9 @@ private:
     {
         if (value <= 0) return 0;
 
-        int bitLength;
-#if defined(_MSC_VER)
-        unsigned long index;
-        _BitScanReverse(&index, (unsigned long)value);
-        bitLength = (int)index;
-#elif defined(__GNUC__) || defined(__clang__)
-        bitLength = 31 - __builtin_clz((unsigned int)value);
-#else
-        // Fallback to bit manipulation version
-        int temp = value;
-        bitLength = 0;
-        while (temp > 1) {
-            bitLength++;
-            temp >>= 1;
-        }
-#endif
-
+        int bitLength = bit_width((unsigned int)value) - 1;
         return 2 * bitLength + 1;
+        //return 2 * bit_width((unsigned int)value) - 1;
     }
 
     //Calculate offset encoding cost (MSB + 7-bit LSB)
@@ -430,8 +400,8 @@ private:
         }
 
         //Hash-based match finding for positions with 3+ bytes
-        if ((size_t)(pos + 2) < data.size()) {
-            
+        if ((size_t)(pos + 2) < data.size())
+        {            
             uint32_t hash = ((uint32_t)data[pos] << 16) | ((uint32_t)data[(size_t)(pos + 1)] << 8) | data[(size_t)(pos + 2)];
             auto it = hashTable.find(hash);
             
@@ -530,7 +500,7 @@ private:
             //Try adding current byte to literal run
             int literalRunStart = (dp[pos].literalRunStart == -1) ? pos : dp[pos].literalRunStart;
             int literalCost = getLiteralCost(data, pos, literalRunStart);
-            int totalLiteralCost = dp[pos].cost + literalCost ;
+            int totalLiteralCost = dp[pos].cost + literalCost;
 
             if (totalLiteralCost < dp[pos + 1].cost)
             {
@@ -598,8 +568,8 @@ public:
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-int CalculateCompressedSize(const vector<unsigned char>& data) {
-    
+int CalculateCompressedSize(const vector<unsigned char>& data)
+{    
     int NumLongRuns = 0;
     int RunLength = 0;
     int LongRunLength = 0;
@@ -610,14 +580,14 @@ int CalculateCompressedSize(const vector<unsigned char>& data) {
         if (data[i] == ThisChar)
         {
             RunLength++;
-            if (RunLength == 256)
+            if (RunLength == 128)
             {
                 NumLongRuns++;
             }
         }
         else
         {
-            if (RunLength > 255)
+            if (RunLength > 127)
             {
                 LongRunLength += RunLength;
             }
@@ -631,12 +601,12 @@ int CalculateCompressedSize(const vector<unsigned char>& data) {
     if (NumLongRuns > 16 || LongRunLength > 0x1000 || data.size() > 32768)
     {
         CompressedSizeCalculatorFast calculator;
-        result = calculator.calculateCompressedSize(data, 32768, 65536, 256);
+        result = calculator.calculateCompressedSize(data, 32768, 65536, 32);
     }
     else
     {
         CompressedSizeCalculator calculator;
-        result = calculator.calculateCompressedSize(data, 32768, 65536);
+        result = calculator.calculateCompressedSize(data, 32768, 65536, 32);
     }
 
     return result;

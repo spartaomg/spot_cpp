@@ -1,11 +1,11 @@
 [1.4 - 250604]
 
 - New optimization algorithm based on average color fragment length instead of color frequency to predict optimal color placement
-- SPOT now checks 8^4 different color arrangements and selects candidates for best compression based on the number of color fragments created and color combinations used, then passes them through a compression cost calculator to select the one that compresses best as final output
+- SPOT checks 8192 different color arrangements and selects candidates for best compression based on the number of color fragments created and color combinations used, then passes them through a compression cost calculator to select the one that compresses best as final output
 - New command-line switch -v for verbose mode
 - New command-line switch -s for simple/speedy mode to bypass compression cost analysis - helpful in case of huge, non-standard images
 - SPOT now accepts VICE 384x272px PNG screenshots as input
-- KoalaX (.klx) file format for large, non-standard bitmaps (layout similar to Koala: bitmap width in double pixels [low + high bytes], bitmap height [low + high bytes] followed by bitmap pixel info, screen RAM, color RAM, and background color)
+- KoalaX (.klx) file format for large, non-standard bitmaps (layout is similar to Koala: bitmap width in double pixels [low + high bytes], bitmap height [low + high bytes] followed by bitmap pixel info, screen RAM, color RAM, and background color)
 - PEPTOette palette from C64GFX.com
 
 [1.3 - 240428]

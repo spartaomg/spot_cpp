@@ -19,6 +19,7 @@
 #include "thirdparty/lodepng.h"
 #include <unordered_map>
 #include <climits>
+#include <bitset>
 
 using namespace std;
 
