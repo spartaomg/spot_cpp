@@ -52,9 +52,8 @@ private:
     {
         if (value <= 0) return 0;
 
-        int bitLength = bit_width((unsigned int)value) - 1;
-        return 2 * bitLength + 1;
-        //return 2 * bit_width((unsigned int)value) - 1;
+        int bitLength = bit_width((unsigned int)value);// -1;
+        return 2 * bitLength - 1;
     }
 
     inline int getOffsetBitLength(int offset) const
@@ -335,9 +334,8 @@ private:
     {
         if (value <= 0) return 0;
 
-        int bitLength = bit_width((unsigned int)value) - 1;
-        return 2 * bitLength + 1;
-        //return 2 * bit_width((unsigned int)value) - 1;
+        int bitLength = bit_width((unsigned int)value);// -1;
+        return 2 * bitLength - 1;
     }
 
     //Calculate offset encoding cost (MSB + 7-bit LSB)

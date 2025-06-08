@@ -3079,64 +3079,31 @@ bool OptimizeKoala()
 
                                     int Layout = FindBestLayout();
 
-                                    if (OnePassMode)
+                                    if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
                                     {
-                                        if ((BestNumFrag < BestFrag) && (BestNumFragCol < BestFragCol))
+                                        RenderImage(Layout);
+
+                                        BestFrag = BestNumFrag;
+                                        BestFragCol = BestNumFragCol;
+
+                                        Predictors.push_back(BestNumFrag + BestNumFragCol);
+
+                                        if (VerboseMode)
                                         {
-                                            RenderImage(Layout);
-
-                                            BestFrag = BestNumFrag;
-                                            BestFragCol = BestNumFragCol;
-
-                                            Predictors.push_back(BestNumFrag + BestNumFragCol);
-
-                                            if (VerboseMode)
+                                            cout << "Output candidate #" << Predictors.size() << " with color order ";
+                                            cout << (hex);
+                                            if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
+                                            if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
+                                            if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
+                                            if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
+                                            for (int i = 0; i < 15; i++)
                                             {
-                                                cout << "Output candidate #" << Predictors.size() << " with color order ";
-                                                cout << (hex);
-                                                if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
-                                                if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
-                                                if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
-                                                if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
-                                                for (int i = 0; i < 15; i++)
+                                                if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
                                                 {
-                                                    if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
-                                                    {
-                                                        cout << (int)ColorSpace[i].Color;
-                                                    }
+                                                    cout << (int)ColorSpace[i].Color;
                                                 }
-                                                cout << (dec) << "\n";
                                             }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
-                                        {
-                                            RenderImage(Layout);
-
-                                            BestFrag = BestNumFrag;
-                                            BestFragCol = BestNumFragCol;
-
-                                            Predictors.push_back(BestNumFrag + BestNumFragCol);
-
-                                            if (VerboseMode)
-                                            {
-                                                cout << "Output candidate #" << Predictors.size() << " with color order ";
-                                                cout << (hex);
-                                                if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
-                                                if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
-                                                if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
-                                                if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
-                                                for (int i = 0; i < 15; i++)
-                                                {
-                                                    if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
-                                                    {
-                                                        cout << (int)ColorSpace[i].Color;
-                                                    }
-                                                }
-                                                cout << (dec) << "\n";
-                                            }
+                                            cout << (dec) << "\n";
                                         }
                                     }
                                 }
@@ -4123,7 +4090,7 @@ void ShowHelp()
     cout << "         o - .obm (optimized bitmap - 9503 bytes)\n";
     cout << "         p - .png (portable network graphics)\n";
     cout << "         b - .bmp (bitmap)\n";
-    cout << "         x - .klx (KoalaX)";
+    cout << "         x - .klx (KoalaX)\n";
     cout << "         This parameter is optional. If omitted, then a Koala file will be created by default.\n\n";
     cout << "-b       Output background color(s): 0123456789abcdef or x. SPOT will only create C64 files using the selected\n";
     cout << "         background color(s). If x is used as value then only the first possible background color will be used,\n";
