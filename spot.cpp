@@ -2012,7 +2012,7 @@ void CorrectOverlaps()
 }
 */
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
-/*
+///*
 struct unusedblock {
     int SeqLenBefore;
     int NumSeqBefore;
@@ -2148,7 +2148,7 @@ void DistributeUnusedBlocks()
 
     for (size_t i = 0; i < UnusedBlocks.size(); i++)
     {
-        if ((UnusedBlocks[i].SeqColorBefore = UnusedBlocks[i].SeqColorAfter) || (UnusedBlocks[i].SeqLenBefore >= UnusedBlocks[i].SeqLenAfter))
+        if ((UnusedBlocks[i].SeqColorBefore == UnusedBlocks[i].SeqColorAfter) || (UnusedBlocks[i].SeqLenBefore >= UnusedBlocks[i].SeqLenAfter))
         {
             unsigned char TmpCol = UnusedBlocks[i].SeqColorBefore;
             for (int j = UnusedBlocks[i].UnusedIdx; j < UnusedBlocks[i].UnusedIdx + UnusedBlocks[i].UnusedLength; j++)
@@ -2293,7 +2293,7 @@ void DistributeUnusedBlocks()
 
     for (size_t i = 0; i < UnusedBlocks.size(); i++)
     {
-        if ((UnusedBlocks[i].SeqColorBefore = UnusedBlocks[i].SeqColorAfter) || (UnusedBlocks[i].SeqLenBefore >= UnusedBlocks[i].SeqLenAfter))
+        if ((UnusedBlocks[i].SeqColorBefore == UnusedBlocks[i].SeqColorAfter) || (UnusedBlocks[i].SeqLenBefore >= UnusedBlocks[i].SeqLenAfter))
         {
             unsigned char TmpCol = UnusedBlocks[i].SeqColorBefore;
             for (int j = UnusedBlocks[i].UnusedIdx; j < UnusedBlocks[i].UnusedIdx + UnusedBlocks[i].UnusedLength; j++)
@@ -2435,7 +2435,7 @@ void DistributeUnusedBlocks()
 
     for (size_t i = 0; i < UnusedBlocks.size(); i++)
     {
-        if ((UnusedBlocks[i].SeqColorBefore = UnusedBlocks[i].SeqColorAfter) || (UnusedBlocks[i].SeqLenBefore >= UnusedBlocks[i].SeqLenAfter))
+        if ((UnusedBlocks[i].SeqColorBefore == UnusedBlocks[i].SeqColorAfter) || (UnusedBlocks[i].SeqLenBefore >= UnusedBlocks[i].SeqLenAfter))
         {
             unsigned char TmpCol = UnusedBlocks[i].SeqColorBefore;
             for (int j = UnusedBlocks[i].UnusedIdx; j < UnusedBlocks[i].UnusedIdx + UnusedBlocks[i].UnusedLength; j++)
@@ -2458,7 +2458,7 @@ void DistributeUnusedBlocks()
     //WriteBinaryFile(OutFile + "_C1.bin", ColRAM, ColTabSize);
 
 }
-*/
+//*/
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
 void FillUnusedBlocks()
@@ -2956,7 +2956,8 @@ bool OptimizeKoala()
                                 for (int i = 0; i < 2; i++)
                                 {
                                     RelocateSingleBlocks();
-                                    FillUnusedBlocks();
+                                    DistributeUnusedBlocks();
+                                    //FillUnusedBlocks();
                                     FixOverlaps();
                                     MoveMatchingSingles();
                                 }
@@ -3072,7 +3073,8 @@ bool OptimizeKoala()
                                     for (int i = 0; i < 2; i++)
                                     {
                                         RelocateSingleBlocks();
-                                        FillUnusedBlocks();
+                                        DistributeUnusedBlocks();
+                                        //FillUnusedBlocks();
                                         FixOverlaps();
                                         MoveMatchingSingles();
                                     }
