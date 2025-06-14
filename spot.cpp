@@ -17,6 +17,10 @@
 //KoalaX (klx) file format for large, non-standard bitmaps
 //klx layout is similar to Koala: bitmap width (double pixels) lo + hi, bitmap height lo + hi, bitmap pixel info, screen RAM, color RAM, background color
 
+//new since v1.4
+//bugfix to count color fragments correctly in case the last slot of a color space is used by the color - would result in a buggy output if a color was present in every block
+//making sure each color order is only processed once
+
 #include "common.h"
 
 //#define DEBUG
@@ -3394,7 +3398,7 @@ bool OptimizeKoala()
                                     if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
                                     {
 
-                                        ColorOrder.push_back(CurrentColorOrder);
+                                        //ColorOrder.push_back(CurrentColorOrder);
 
                                         RenderImage(Layout);
 
