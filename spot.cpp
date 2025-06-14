@@ -2577,6 +2577,263 @@ void RelocateSingleBlocks()
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
+void ConnectMatchingSegments()
+{
+	unsigned char CurrentColor = 255; // Start with an invalid color
+	int SeqStart = INT_MAX;           // Start with an invalid index
+	int SeqEnd = INT_MIN;             // Start with an invalid index
+
+    for (int i = 0; i < ColTabSize - 1; i++)
+    {
+        if (ScrHi[i] != CurrentColor)
+        {
+			if (CurrentColor != 255 && SeqStart <= SeqEnd)
+			{
+                if (ScrLo[SeqStart - 1] == CurrentColor && ScrLo[SeqEnd + 1] == CurrentColor)
+                {
+					unsigned char NewColor = ScrLo[SeqStart - 1]; // Use the color from ScrLo
+                    int NumSeq = 0;
+                    for (int j = SeqStart; j <= SeqEnd; j++)
+                    {
+                        if (ScrLo[j] != NewColor)
+                        {
+                            NumSeq++;
+							NewColor = ScrLo[j]; // Update to the next color
+                        }
+                    }
+
+                    if (NumSeq > 1)
+                    {
+                        for (int j = SeqStart; j <= SeqEnd; j++)
+                        {
+                            ScrHi[j] = ScrLo[j];
+                            ScrLo[j] = CurrentColor;
+                        }
+                    }
+                }
+                else if (ColRAM[SeqStart - 1] == CurrentColor && ColRAM[SeqEnd + 1] == CurrentColor)
+                {
+                    unsigned char NewColor = ColRAM[SeqStart - 1]; // Use the color from ScrLo
+                    int NumSeq = 0;
+                    for (int j = SeqStart; j <= SeqEnd; j++)
+                    {
+                        if (ColRAM[j] != NewColor)
+                        {
+                            NumSeq++;
+                            NewColor = ColRAM[j]; // Update to the next color
+                        }
+                    }
+
+                    if (NumSeq > 1)
+                    {
+                        for (int j = SeqStart; j <= SeqEnd; j++)
+                        {
+                            ScrHi[j] = ColRAM[j];
+                            ColRAM[j] = CurrentColor;
+                        }
+                    }
+                }
+            }
+			// If we encounter a new color, update the current color and segment indices                                            
+            CurrentColor = ScrHi[i]; // Update current color
+			SeqStart = i;            // Start a new segment
+			SeqEnd = i;              // Initialize end of the segment
+		}
+		else
+		{
+			SeqEnd = i; // Extend the end of the current segment
+        }
+    }
+
+    CurrentColor = 255; // Start with an invalid color
+    SeqStart = INT_MAX;           // Start with an invalid index
+    SeqEnd = INT_MIN;             // Start with an invalid index
+
+    for (int i = 0; i < ColTabSize - 1; i++)
+    {
+        if (ScrLo[i] != CurrentColor)
+        {
+            if (CurrentColor != 255 && SeqStart <= SeqEnd)
+            {
+                if (ScrHi[SeqStart - 1] == CurrentColor && ScrHi[SeqEnd + 1] == CurrentColor)
+                {
+                    unsigned char NewColor = ScrHi[SeqStart - 1]; // Use the color from ScrLo
+                    int NumSeq = 0;
+                    for (int j = SeqStart; j <= SeqEnd; j++)
+                    {
+                        if (ScrHi[j] != NewColor)
+                        {
+                            NumSeq++;
+                            NewColor = ScrHi[j]; // Update to the next color
+                        }
+                    }
+
+                    if (NumSeq > 1)
+                    {
+                        int Num1 = 0;
+                        int Num2 = 0;
+						for (int j = 0; j < ColTabSize; j++)
+						{
+							if (ScrHi[j] == CurrentColor)
+							{
+								Num1++;
+							}
+							if (ScrLo[j] == CurrentColor)
+							{
+								Num2++;
+							}
+						}
+
+                        if (Num1 >= Num2)
+                        {
+                            for (int j = SeqStart; j <= SeqEnd; j++)
+                            {
+                                ScrLo[j] = ScrHi[j];
+                                ScrHi[j] = CurrentColor;
+                            }
+                        }
+
+                    }
+                }
+                else if (ColRAM[SeqStart - 1] == CurrentColor && ColRAM[SeqEnd + 1] == CurrentColor)
+                {
+                    unsigned char NewColor = ColRAM[SeqStart - 1]; // Use the color from ScrLo
+                    int NumSeq = 0;
+                    for (int j = SeqStart; j <= SeqEnd; j++)
+                    {
+                        if (ColRAM[j] != NewColor)
+                        {
+                            NumSeq++;
+                            NewColor = ColRAM[j]; // Update to the next color
+                        }
+                    }
+
+                    if (NumSeq > 1)
+                    {
+                        for (int j = SeqStart; j <= SeqEnd; j++)
+                        {
+                            ScrLo[j] = ColRAM[j];
+                            ColRAM[j] = CurrentColor;
+                        }
+                    }
+                }
+            }
+            // If we encounter a new color, update the current color and segment indices                                            
+            CurrentColor = ScrHi[i]; // Update current color
+            SeqStart = i;            // Start a new segment
+            SeqEnd = i;              // Initialize end of the segment
+        }
+        else
+        {
+            SeqEnd = i; // Extend the end of the current segment
+        }
+    }
+
+    CurrentColor = 255; // Start with an invalid color
+    SeqStart = INT_MAX;           // Start with an invalid index
+    SeqEnd = INT_MIN;             // Start with an invalid index
+
+    for (int i = 0; i < ColTabSize - 1; i++)
+    {
+        if (ColRAM[i] != CurrentColor)
+        {
+            if (CurrentColor != 255 && SeqStart <= SeqEnd)
+            {
+                if (ScrHi[SeqStart - 1] == CurrentColor && ScrHi[SeqEnd + 1] == CurrentColor)
+                {
+                    unsigned char NewColor = ScrHi[SeqStart - 1]; // Use the color from ScrLo
+                    int NumSeq = 0;
+                    for (int j = SeqStart; j <= SeqEnd; j++)
+                    {
+                        if (ScrHi[j] != NewColor)
+                        {
+                            NumSeq++;
+                            NewColor = ScrHi[j]; // Update to the next color
+                        }
+                    }
+
+                    if (NumSeq > 1)
+                    {
+                        int Num1 = 0;
+                        int Num2 = 0;
+                        for (int j = 0; j < ColTabSize; j++)
+                        {
+                            if (ScrHi[j] == CurrentColor)
+                            {
+                                Num1++;
+                            }
+                            if (ColRAM[j] == CurrentColor)
+                            {
+                                Num2++;
+                            }
+                        }
+
+
+                        if (Num1 >= Num2)
+						{
+							for (int j = SeqStart; j <= SeqEnd; j++)
+							{
+								ColRAM[j] = ScrHi[j];
+								ScrHi[j] = CurrentColor;
+							}
+						}
+                    }
+                }
+                else if (ScrLo[SeqStart - 1] == CurrentColor && ScrLo[SeqEnd + 1] == CurrentColor)
+                {
+                    unsigned char NewColor = ScrLo[SeqStart - 1]; // Use the color from ScrLo
+                    int NumSeq = 0;
+                    for (int j = SeqStart; j <= SeqEnd; j++)
+                    {
+                        if (ScrLo[j] != NewColor)
+                        {
+                            NumSeq++;
+                            NewColor = ScrLo[j]; // Update to the next color
+                        }
+                    }
+
+                    if (NumSeq > 1)
+                    {
+                        int Num1 = 0;
+                        int Num2 = 0;
+                        for (int j = 0; j < ColTabSize; j++)
+                        {
+                            if (ScrLo[j] == CurrentColor)
+                            {
+                                Num1++;
+                            }
+                            if (ColRAM[j] == CurrentColor)
+                            {
+                                Num2++;
+                            }
+                        }
+
+
+                        if (Num1 >= Num2)
+                        {
+                            for (int j = SeqStart; j <= SeqEnd; j++)
+                            {
+                                ColRAM[j] = ScrLo[j];
+                                ScrLo[j] = CurrentColor;
+                            }
+                        }
+                    }
+                }
+            }
+            // If we encounter a new color, update the current color and segment indices                                            
+            CurrentColor = ScrHi[i]; // Update current color
+            SeqStart = i;            // Start a new segment
+            SeqEnd = i;              // Initialize end of the segment
+        }
+        else
+        {
+            SeqEnd = i; // Extend the end of the current segment
+        }
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
 bool SortBySeqLen(colorspace A, colorspace B)
 {
     return A.SeqLen > B.SeqLen;
@@ -2849,6 +3106,8 @@ bool OptimizeKoala()
         }
     }
 
+	//WriteBinaryFile(OutFile + "_ColMap.bin", ColMap); //Save color map for debugging
+
     for (int c = 0; c < 16; c++)
     {
         if (C64Col[c] > 0)
@@ -2861,7 +3120,6 @@ bool OptimizeKoala()
         int LenCol = 0;
         int ThisSeq = 0;
         int ColStart = INT_MAX;
-        int UnusedSeq = 0;
         int NumUnused = 0;
         int LenUnused = 0;
         for (int i = 0; i < ColTabSize; i++)
@@ -2874,25 +3132,22 @@ bool OptimizeKoala()
                 }
                 LenCol++;
                 ThisSeq++;
-                if ((UnusedSeq > 0) && (ColStart != INT_MAX))
-                {
-                    NumUnused++;
-                    LenUnused += UnusedSeq;
-                    UnusedSeq = 0;
-                }
             }
             else
             {
-                if (ColStart < INT_MAX)
-                {
-                    UnusedSeq++;
-                }
                 if (ThisSeq > 0)
                 {
                     NumSeq[c]++;
                     ThisSeq = 0;
                 }
             }
+        }
+
+        //Add last sequence
+
+        if (ThisSeq > 0)
+        {
+            NumSeq[c]++;
         }
 
         ColorSpace[c].Frequency = NumSeq[c];
@@ -2920,6 +3175,8 @@ bool OptimizeKoala()
 
     int Iterations = NumColors > 8 ? 8 : NumColors < 4 ? 4 : NumColors;     //Iterations: min. 4, max. 8
 
+    vector <int> ColorOrder{};
+
     sort(ColorSpace.begin(), ColorSpace.end(), SortBySeqLen);
 
     for (int c0 = 0; c0 < Iterations; c0++)
@@ -2936,14 +3193,36 @@ bool OptimizeKoala()
                         {
                             if ((c3 != c0) && (c3 != c1) && (c3 != c2))
                             {
+
                                 fill(ColRAM.begin(), ColRAM.end(), 255);
                                 fill(ScrHi.begin(), ScrHi.end(), 255);
                                 fill(ScrLo.begin(), ScrLo.end(), 255);
 
-                                if (ColorSpace[c0].Used) AssignColor(ColorSpace[c0].Color);
-                                if (ColorSpace[c1].Used) AssignColor(ColorSpace[c1].Color);
-                                if (ColorSpace[c2].Used) AssignColor(ColorSpace[c2].Color);
-                                if (ColorSpace[c3].Used) AssignColor(ColorSpace[c3].Color);
+                                int CurrentColorOrder = 0;
+
+                                if (ColorSpace[c0].Used)
+                                {
+                                    CurrentColorOrder = ColorSpace[c0].Color;
+                                    AssignColor(ColorSpace[c0].Color);
+                                }
+                                if (ColorSpace[c1].Used)
+                                {
+                                    CurrentColorOrder = CurrentColorOrder * 16 + ColorSpace[c1].Color;
+                                    AssignColor(ColorSpace[c1].Color);
+
+                                }
+                                if (ColorSpace[c2].Used)
+                                {
+                                    CurrentColorOrder = CurrentColorOrder * 16 + ColorSpace[c2].Color;
+                                    AssignColor(ColorSpace[c2].Color);
+
+                                }
+                                if (ColorSpace[c3].Used)
+                                {
+                                    CurrentColorOrder = CurrentColorOrder * 16 + ColorSpace[c3].Color;
+                                    AssignColor(ColorSpace[c3].Color);
+
+                                }
 
                                 for (int i = 0; i < 15; i++)
                                 {
@@ -2956,10 +3235,11 @@ bool OptimizeKoala()
                                 for (int i = 0; i < 2; i++)
                                 {
                                     RelocateSingleBlocks();
-                                    DistributeUnusedBlocks();
-                                    //FillUnusedBlocks();
+                                    //DistributeUnusedBlocks();
+                                    FillUnusedBlocks();
                                     FixOverlaps();
                                     MoveMatchingSingles();
+                                    //ConnectMatchingSegments();
                                 }
 
                                 int Layout = FindBestLayout();
@@ -2968,6 +3248,9 @@ bool OptimizeKoala()
                                 {
                                     if ((BestNumFrag < BestFrag) && (BestNumFragCol < BestFragCol))
                                     {
+
+                                        ColorOrder.push_back(CurrentColorOrder);
+
                                         RenderImage(Layout);
 
                                         BestFrag = BestNumFrag;
@@ -3057,10 +3340,36 @@ bool OptimizeKoala()
                                     fill(ScrHi.begin(), ScrHi.end(), 255);
                                     fill(ScrLo.begin(), ScrLo.end(), 255);
 
-                                    if (ColorSpace[c0].Used) AssignColor(ColorSpace[c0].Color);
-                                    if (ColorSpace[c1].Used) AssignColor(ColorSpace[c1].Color);
-                                    if (ColorSpace[c2].Used) AssignColor(ColorSpace[c2].Color);
-                                    if (ColorSpace[c3].Used) AssignColor(ColorSpace[c3].Color);
+                                    int CurrentColorOrder = 0;
+
+                                    if (ColorSpace[c0].Used)
+                                    {
+                                        CurrentColorOrder = ColorSpace[c0].Color;
+                                        AssignColor(ColorSpace[c0].Color);
+                                    }
+                                    if (ColorSpace[c1].Used)
+                                    {
+                                        CurrentColorOrder = CurrentColorOrder * 16 + ColorSpace[c1].Color;
+                                        AssignColor(ColorSpace[c1].Color);
+
+                                    }
+                                    if (ColorSpace[c2].Used)
+                                    {
+                                        CurrentColorOrder = CurrentColorOrder * 16 + ColorSpace[c2].Color;
+                                        AssignColor(ColorSpace[c2].Color);
+
+                                    }
+                                    if (ColorSpace[c3].Used)
+                                    {
+                                        CurrentColorOrder = CurrentColorOrder * 16 + ColorSpace[c3].Color;
+                                        AssignColor(ColorSpace[c3].Color);
+
+                                    }
+
+                                    if (find(ColorOrder.begin(), ColorOrder.end(), CurrentColorOrder) != ColorOrder.end())
+                                    {
+                                        continue; // Skip if this color order has already been processed
+                                    }
 
                                     for (int i = 0; i < 15; i++)
                                     {
@@ -3073,16 +3382,20 @@ bool OptimizeKoala()
                                     for (int i = 0; i < 2; i++)
                                     {
                                         RelocateSingleBlocks();
-                                        DistributeUnusedBlocks();
-                                        //FillUnusedBlocks();
+                                        //DistributeUnusedBlocks();
+                                        FillUnusedBlocks();
                                         FixOverlaps();
                                         MoveMatchingSingles();
+                                        //ConnectMatchingSegments();
                                     }
 
                                     int Layout = FindBestLayout();
 
                                     if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
                                     {
+
+                                        ColorOrder.push_back(CurrentColorOrder);
+
                                         RenderImage(Layout);
 
                                         BestFrag = BestNumFrag;
@@ -4141,9 +4454,9 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/Benchmark/14.png";
-        OutFile = "c:/spot/Benchmark/14_14";
-        CmdOptions = "k";
+        InFile = "c:/spot/Bug/hs4_mc.png";
+        OutFile = "c:/spot/Bug/hs4_mc";
+        CmdOptions = "mscg";
         CmdColors = "x";
         VerboseMode = true;
         //OnePassMode = true;
