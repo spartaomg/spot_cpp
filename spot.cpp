@@ -2845,9 +2845,9 @@ bool SortBySeqLen(colorspace A, colorspace B)
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool SortByCompactness(colorspace A, colorspace B)
+bool SortByFrequency(colorspace A, colorspace B)
 {
-    return A.Compactness > B.Compactness;
+    return A.Frequency > B.Frequency;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -3123,35 +3123,22 @@ bool OptimizeKoala()
         
         int LenCol = 0;
         int ThisSeq = 0;
-        int ColStart = INT_MAX;
-        int NumUnused = 0;
-        int LenUnused = 0;
+
         for (int i = 0; i < ColTabSize; i++)
         {
             if (ColMap[(c * ColTabSize) + i] == 255)
             {
-                if (ColStart == INT_MAX)
+                if (ThisSeq == 0)
                 {
-                    ColStart = i;
+					NumSeq[c]++;  //Count number of sequences for this color
                 }
                 LenCol++;
                 ThisSeq++;
             }
             else
             {
-                if (ThisSeq > 0)
-                {
-                    NumSeq[c]++;
-                    ThisSeq = 0;
-                }
+                ThisSeq = 0;
             }
-        }
-
-        //Add last sequence
-
-        if (ThisSeq > 0)
-        {
-            NumSeq[c]++;
         }
 
         ColorSpace[c].Frequency = NumSeq[c];
@@ -3159,13 +3146,7 @@ bool OptimizeKoala()
         if (NumSeq[c] != 0)
         {
             ColorSpace[c].SeqLen = (double)LenCol / (double)NumSeq[c];
-            ColorSpace[c].Compactness = LenCol + LenUnused;
-        }
-
-        if (NumUnused != 0)
-        {
-            ColorSpace[c].UnusedLen = (double)LenUnused / (double)NumUnused;
-            ColorSpace[c].Compactness = LenCol + LenUnused / LenUnused;
+            ColorSpace[c].Frequency = LenCol;
         }
     }
     if (VerboseMode)
@@ -3318,14 +3299,14 @@ bool OptimizeKoala()
             }
         }
     }
-    
-    sort(ColorSpace.begin(), ColorSpace.end(), SortByCompactness);
-
-    BestFrag = ColTabSize * 2;
-    BestFragCol = ColTabSize * 2;
 
     if (!OnePassMode)
     {
+        sort(ColorSpace.begin(), ColorSpace.end(), SortByFrequency);
+
+        BestFrag = ColTabSize * 2;
+        BestFragCol = ColTabSize * 2;
+
         for (int c0 = 0; c0 < Iterations; c0++)
         {
             for (int c1 = 0; c1 < Iterations; c1++)
@@ -3433,124 +3414,7 @@ bool OptimizeKoala()
             }
         }
     }
-    /*
-    sort(ColorSpace.begin(), ColorSpace.end(), SortByFrequency);
 
-    BestFrag = ColTabSize * 2;
-    BestFragCol = ColTabSize * 2;
-
-    if (!OnePassMode)
-    {
-        for (int c0 = 0; c0 < Iterations; c0++)
-        {
-            for (int c1 = 0; c1 < Iterations; c1++)
-            {
-                if (c1 != c0)
-                {
-                    for (int c2 = 0; c2 < Iterations; c2++)
-                    {
-                        if ((c2 != c0) && (c2 != c1))
-                        {
-                            for (int c3 = 0; c3 < Iterations; c3++)
-                            {
-                                if ((c3 != c0) && (c3 != c1) && (c3 != c2))
-                                {
-                                    fill(ColRAM.begin(), ColRAM.end(), 255);
-                                    fill(ScrHi.begin(), ScrHi.end(), 255);
-                                    fill(ScrLo.begin(), ScrLo.end(), 255);
-
-                                    if (ColorSpace[c0].Used) AssignColor(ColorSpace[c0].Color);
-                                    if (ColorSpace[c1].Used) AssignColor(ColorSpace[c1].Color);
-                                    if (ColorSpace[c2].Used) AssignColor(ColorSpace[c2].Color);
-                                    if (ColorSpace[c3].Used) AssignColor(ColorSpace[c3].Color);
-
-                                    for (int i = 0; i < 15; i++)
-                                    {
-                                        if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
-                                        {
-                                            AssignColor(ColorSpace[i].Color);
-                                        }
-                                    }
-
-                                    for (int i = 0; i < 2; i++)
-                                    {
-                                        RelocateSingleBlocks();
-                                        FillUnusedBlocks();
-                                        FixOverlaps();
-                                        MoveMatchingSingles();
-                                    }
-
-                                    int Layout = FindBestLayout();
-
-                                    if (OnePassMode)
-                                    {
-                                        if ((BestNumFrag < BestFrag) && (BestNumFragCol < BestFragCol))
-                                        {
-                                            RenderImage(Layout);
-
-                                            BestFrag = BestNumFrag;
-                                            BestFragCol = BestNumFragCol;
-
-                                            Predictors.push_back(BestNumFrag + BestNumFragCol);
-
-                                            if (VerboseMode)
-                                            {
-                                                cout << "Output candidate #" << Predictors.size() << " with color order ";
-                                                cout << (hex);
-                                                if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
-                                                if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
-                                                if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
-                                                if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
-                                                for (int i = 0; i < 15; i++)
-                                                {
-                                                    if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
-                                                    {
-                                                        cout << (int)ColorSpace[i].Color;
-                                                    }
-                                                }
-                                                cout << (dec) << "\n";
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
-                                        {
-                                            RenderImage(Layout);
-
-                                            BestFrag = BestNumFrag;
-                                            BestFragCol = BestNumFragCol;
-
-                                            Predictors.push_back(BestNumFrag + BestNumFragCol);
-
-                                            if (VerboseMode)
-                                            {
-                                                cout << "Output candidate #" << Predictors.size() << " with color order ";
-                                                cout << (hex);
-                                                if (ColorSpace[c0].Used) cout << (int)ColorSpace[c0].Color;
-                                                if (ColorSpace[c1].Used) cout << (int)ColorSpace[c1].Color;
-                                                if (ColorSpace[c2].Used) cout << (int)ColorSpace[c2].Color;
-                                                if (ColorSpace[c3].Used) cout << (int)ColorSpace[c3].Color;
-                                                for (int i = 0; i < 15; i++)
-                                                {
-                                                    if ((ColorSpace[i].Used) && (i != c0) && (i != c1) && (i != c2) && (i != c3))
-                                                    {
-                                                        cout << (int)ColorSpace[i].Color;
-                                                    }
-                                                }
-                                                cout << (dec) << "\n";
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-*/
     size_t IdxBest = Predictors.size() - 1;
 
     if (!OnePassMode)
