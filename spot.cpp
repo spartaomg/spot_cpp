@@ -21,6 +21,7 @@
 //bugfix to count color fragments correctly in case the last slot of a color space is used by the color - would result in a buggy output if a color was present in every block
 //making sure each color order is only processed once
 //adding hi-res graphics support
+//new -h switch to force hi-res mode if the bitmap otherwise would pass for multicolor (all pixels are double pixels)
 
 #include "common.h"
 
@@ -71,7 +72,8 @@ string FPath{}, FName{}, FExt{};
 
 string CmdOptions = "k";                    //Default output file type = kla
 string CmdColors = "0123456789abcdef";      //Default output background color: all possible colors
-string CmdMode = "m";
+
+bool ForceHiresMode = false;
 
 bool C64Formats = false;
 
@@ -4210,7 +4212,7 @@ bool DecodeBmp()
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool IsMCImage()
+bool IsDoublePxImage()
 {
     for (size_t Y = 0; Y < PicH; Y++)
     {
@@ -4220,7 +4222,6 @@ bool IsMCImage()
             color Col2 = GetPixel(Image, X + 1, Y, PicW);
             if ((Col1.R != Col2.R) || (Col1.G != Col2.G) || (Col1.B != Col2.B))
             {
-                //cerr << "***CRITICAL***SPOT only accepts multicolor (double-pixel) pictures as input. This image file cannot be converted!\n";
                 return false;
             }
         }
@@ -4260,7 +4261,7 @@ bool CountColorsPerBlock()
                         }
                         else
                         {
-                            cout << "***CRITICAL***\tThis image file has more than 2 colors per char block and cannot be converted to hires bitmap.\n";
+                            cout << "***CRITICAL***\tThis image file has more than 2 colors per char block and cannot be converted to hi-res bitmap.\n";
                             return false;
                         }
                     }
@@ -4336,17 +4337,26 @@ bool ImportFromImage()
         PicH = 200;
     }
 
-    //Make sure this is a MC (double pixel) picture
-    //if (!IsMCImage())
-    //  return false;
+    //Check if image is a MC (double pixels) or a hi-res picture
+    IsHires = !IsDoublePxImage();
 
-    IsHires = !IsMCImage();
-
-    if (IsHires || CmdMode == "h")
+    if (IsHires || ForceHiresMode)
     {
         if (!CountColorsPerBlock())
         {
             return false;
+        }
+    }
+
+    if (VerboseMode)
+    {
+        if (!IsHires)
+        {
+            cout << "Converting from multicolor image.";
+        }
+        else
+        {
+            cout << "Converting from hi-res image.";
         }
     }
 
@@ -4485,8 +4495,9 @@ bool ImportFromKoala()
 void ShowHelp()
 {
     cout << "SPOT is a small cross-platform command-line tool that converts .png, .bmp, .kla, and .klx images into C64 file formats\n";
-    cout << "optimized for better compression. The following output file formats can be selected: Koala (.kla), bitmap (.map),\n";
-    cout << "screen RAM (.scr), color RAM (.col), compressed color RAM (.ccr)*, optimized bitmap (.obm)**, and KoalaX (.klx)***.\n\n";
+    cout << "optimized for better compression. It can convert both multicolor and hi-res images. The following output file formats\n";
+    cout << "can be selected: Koala (.kla), bitmap (.map), screen RAM (.scr), color RAM (.col), compressed color RAM (.ccr)*,\n";
+    cout << "optimized bitmap (.obm)**, and KoalaX (.klx)***.\n\n";
     cout << "*Compressed color RAM (.ccr) format: two adjacent half bytes are combined to reduce the size of the color RAM to\n";
     cout << "500 bytes.\n\n";
     cout << "**Optimized bitmap (.obm) format: bitmap data is stored column wise. Screen RAM and compressed color RAM stored\n";
@@ -4498,10 +4509,14 @@ void ShowHelp()
     cout << "RAM, and background color are stored similar to the Koala format. Meant for handling non-standard image sizes.\n\n";
     cout << "Usage\n";
     cout << "-----\n\n";
-    cout << "spot input -o [output] -f [format] -b [bgcolor] -v -s\n\n";
+    cout << "spot input -o [output] -m [bitmap mode] -f [format] -b [bgcolor] -v -s\n\n";
     cout << "input:   An input image file to be optimized/converted. Only .png, .bmp, .kla, and .klx file types are accepted.\n\n";
     cout << "-o       The output folder and file name. File extension (if exists) will be ignored. If omitted, SPOT will create\n";
     cout << "         a <spot/input> folder and the input file's name will be used as output file name.\n\n";
+    cout << "-h       Force hi-res mode. The default output bitmap mode is multicolor. SPOT will attempt to identify hi-res images,\n";
+    cout << "         but some may pass for both multicolor (double-pixel) and hi-res (no more than 2 colors per char block).\n";
+    cout << "         Use this switch if you want to force hi-res mode in such a case. If the image cannot be converted as hi-res\n";
+    cout << "         then SPOT will exit with an error message. This parameter is optional.\n\n";
     cout << "-f       Output file formats: kmscg2opb. Select as many as you want in any order:\n";
     cout << "         k - .kla (Koala - 10003 bytes)\n";
     cout << "         m - .map (bitmap data)\n";
@@ -4543,7 +4558,6 @@ void ShowHelp()
     cout << "SPOT can handle non-standard image sizes (such as the vertical bitmap in Memento Mori and the diagonal bitmap\n";
     cout << "in Christmas Megademo). When a .kla or .obm file is created from a non-standard sized image, SPOT takes a centered\n";
     cout << "\"snapshot\" of the image and saves that as .kla or .obm. Map, screen RAM, and color RAM files can be of any size.\n\n";
-    cout << "SPOT is meant to convert and optimize multicolor bitmaps (hi-res images get converted to multicolor).\n\n";
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -4565,19 +4579,19 @@ int main(int argc, char* argv[])
         OutFile = "c:/spot/Hires/gp";
         CmdOptions = "mspb";
         CmdColors = "x";
-        CmdMode = "h";
+        ForceHiresMode = true;
         VerboseMode = true;
         //OnePassMode = true;
 #else
         cout << "Usage: spot input [options]\n";
         cout << "options:    -o [output path and filename without extension]\n";
+        cout << "            -h (force hi-res mode)\n";
         cout << "            -f [output format(s)]\n";
         cout << "            -b [background color(s)]\n";
-        cout << "            -m [bitmap mod]\n";
         cout << "            -v (verbose mode)\n";
         cout << "            -s (simple/speedy mode)\n";
         cout << "\n";
-        cout << "Help:  spot -h\n";
+        cout << "Help:  spot -help\n";
         cout << "\n";
 
         return EXIT_SUCCESS;
@@ -4600,7 +4614,7 @@ int main(int argc, char* argv[])
         {
             InFile = args[1];
 
-            if (InFile == "-h")
+            if (InFile == "-help")
             {
                 ShowHelp();
                 return EXIT_SUCCESS;
@@ -4650,25 +4664,9 @@ int main(int argc, char* argv[])
         {
             OnePassMode = true;
         }
-        else if ((args[i] == "-m") || (args[i] == "-M"))        //simple/speedy, 1-pass mode
+        else if ((args[i] == "-h") || (args[i] == "-H"))        //bitmap mode (some hi-res bitmaps may also work as MC, here hi-res mode can be forced
         {
-            if (i + 1 < argc)
-            {
-                CmdMode = args[++i];
-
-                CmdMode = tolower(CmdMode[0]);
-
-                if (CmdMode != "m" && CmdMode != "h")
-                {
-                    cerr << "***CRITICAL***\tUnrecognized [bitmap mode] parameter.\n";
-                    return EXIT_FAILURE;
-                }
-            }
-            else
-            {
-                cerr << "***CRITICAL***\tMissing [bitmap mode] parameter.\n";
-                return EXIT_FAILURE;
-            }
+            ForceHiresMode = true;
         }
         else
         {
@@ -4684,6 +4682,11 @@ int main(int argc, char* argv[])
         if (OnePassMode)
         {
             cout << "Simple/speedy mode on.\n";
+        }
+
+        if (ForceHiresMode)
+        {
+            cout << "Force hi-res mode.\n";
         }
     }
 
