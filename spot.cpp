@@ -71,6 +71,7 @@ string FPath{}, FName{}, FExt{};
 
 string CmdOptions = "k";                    //Default output file type = kla
 string CmdColors = "0123456789abcdef";      //Default output background color: all possible colors
+string CmdMode = "m";
 
 bool C64Formats = false;
 
@@ -4229,6 +4230,52 @@ bool IsMCImage()
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------------
 
+bool CountColorsPerBlock()
+{
+    for (size_t cy = 0; cy < PicH; cy += 8)
+    {
+        for (size_t cx = 0; cx < PicW; cx += 8)
+        {
+            unsigned int BlockCols[2]{};
+            unsigned int NoCol = 0xff000000;
+            BlockCols[0] = NoCol;
+            BlockCols[1] = NoCol;
+
+            for (size_t y = 0; y < 8; y++)
+            {
+                for (size_t x = 0; x < 8; x++)
+                {
+                    unsigned int ThisCol = GetColor(Image, cx + x, cy + y, PicW);
+                    if (ThisCol != BlockCols[0] && ThisCol != BlockCols[1])
+                    {
+                        if (BlockCols[0] == NoCol)
+                        {
+                            BlockCols[0] = ThisCol;
+                            continue;
+                        }
+                        else if (BlockCols[1] == NoCol)
+                        {
+                            BlockCols[1] = ThisCol;
+                            continue;
+                        }
+                        else
+                        {
+                            cout << "***CRITICAL***\tThis image file has more than 2 colors per char block and cannot be converted to hires bitmap.\n";
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    IsHires = true;
+
+    return true;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+
 bool ImportFromImage()
 {
     if (ReadBinaryFile(InFile, ImgRaw) == -1)
@@ -4294,6 +4341,14 @@ bool ImportFromImage()
     //  return false;
 
     IsHires = !IsMCImage();
+
+    if (IsHires || CmdMode == "h")
+    {
+        if (!CountColorsPerBlock())
+        {
+            return false;
+        }
+    }
 
     //Here we have the image decoded in the Image vector of unsigned chars, 4 bytes representing a pixel in RGBA format
     //Next we will find the best palette match
@@ -4506,10 +4561,11 @@ int main(int argc, char* argv[])
     if (argc == 1)
     {
 #ifdef DEBUG
-        InFile = "c:/spot/BurglarBenchmark/01.png";
-        OutFile = "c:/spot/BurglarBenchmark/01_15";
-        CmdOptions = "pb";
+        InFile = "c:/spot/Hires/gp.png";
+        OutFile = "c:/spot/Hires/gp";
+        CmdOptions = "mspb";
         CmdColors = "x";
+        CmdMode = "h";
         VerboseMode = true;
         //OnePassMode = true;
 #else
@@ -4517,6 +4573,7 @@ int main(int argc, char* argv[])
         cout << "options:    -o [output path and filename without extension]\n";
         cout << "            -f [output format(s)]\n";
         cout << "            -b [background color(s)]\n";
+        cout << "            -m [bitmap mod]\n";
         cout << "            -v (verbose mode)\n";
         cout << "            -s (simple/speedy mode)\n";
         cout << "\n";
@@ -4592,6 +4649,26 @@ int main(int argc, char* argv[])
         else if ((args[i] == "-s") || (args[i] == "-S"))        //simple/speedy, 1-pass mode
         {
             OnePassMode = true;
+        }
+        else if ((args[i] == "-m") || (args[i] == "-M"))        //simple/speedy, 1-pass mode
+        {
+            if (i + 1 < argc)
+            {
+                CmdMode = args[++i];
+
+                CmdMode = tolower(CmdMode[0]);
+
+                if (CmdMode != "m" && CmdMode != "h")
+                {
+                    cerr << "***CRITICAL***\tUnrecognized [bitmap mode] parameter.\n";
+                    return EXIT_FAILURE;
+                }
+            }
+            else
+            {
+                cerr << "***CRITICAL***\tMissing [bitmap mode] parameter.\n";
+                return EXIT_FAILURE;
+            }
         }
         else
         {
