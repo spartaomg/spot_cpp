@@ -37,5 +37,7 @@ extern int PaletteAssignment[16];
 extern bool VerboseMode;
 extern bool OnePassMode;
 
+extern bool IsHires;
+
 double HungarianAlgorithm(double m[16][16]);
 int CalculateCompressedSize(const vector<unsigned char>& data);
