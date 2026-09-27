@@ -4598,7 +4598,7 @@ int main(int argc, char* argv[])
 
     cout << "\n";
     cout << "*********************************************************************\n";
-    cout << "SPOT 1.5 - Sparta's Picture Optimizing Tool for the C64 (C) 2021-2025\n";
+    cout << "SPOT 1.5 - Sparta's Picture Optimizing Tool for the C64 (C) 2021-2026\n";
     cout << "*********************************************************************\n";
     cout << "\n";
 
