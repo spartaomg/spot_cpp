@@ -1,3 +1,7 @@
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
+// Compression Cost Calculator
+// created with Claude
+//----------------------------------------------------------------------------------------------------------------------------------------------------------
 
 #include "common.h"
 
@@ -42,7 +46,8 @@ private:
             chain.push_back(i);
 
             // Keep only recent positions to limit search time
-            if (chain.size() > MAX_HASH_CHAIN) {
+            if (chain.size() > MAX_HASH_CHAIN)
+			{
                 chain.erase(chain.begin());
             }
         }
@@ -66,7 +71,8 @@ private:
     {
         int runLength = pos - runStart + 1;
         int currentCost = 1 + getEliasGammaBitLength(runLength) + runLength * 8;
-        if (runLength == 1) {
+        if (runLength == 1)
+		{
             return currentCost;
         }
         int previousCost = 1 + getEliasGammaBitLength(runLength - 1) + (runLength - 1) * 8;
@@ -81,18 +87,22 @@ private:
         const unsigned char* ref = &data[matchPos];
 
         // Use 8-byte chunks for faster comparison when possible
-        while (length + 8 <= maxLen) {
-            if (*(uint64_t*)(src + length) != *(uint64_t*)(ref + length)) {
+        while (length + 8 <= maxLen)
+		{
+            if (*(uint64_t*)(src + length) != *(uint64_t*)(ref + length))
+			{
                 break;
             }
             length += 8;
         }
 
         // Handle remaining bytes
-        while (length < maxLen && src[length] == ref[length]) {
+        while (length < maxLen && src[length] == ref[length])
+		{
             length++;
             // Early exit if we have enough improvement
-            if (minImprovement > 0 && length >= minImprovement) {
+            if (minImprovement > 0 && length >= minImprovement)
+			{
                 break;
             }
         }
@@ -106,7 +116,8 @@ private:
         matches.reserve(16); // Reduced reservation
 
         int maxLookback = min(pos, MAX_OFFSET);
-        if ((size_t)pos >= data.size() || maxLookback == 0) {
+        if ((size_t)pos >= data.size() || maxLookback == 0)
+		{
             return matches;
         }
 
@@ -114,32 +125,38 @@ private:
         int bestCost = INT_MAX;
 
         // Check offset reuse first
-        if (lastOffset > 0 && lastOffset <= pos) {
+        if (lastOffset > 0 && lastOffset <= pos)
+		{
             int matchPos = pos - lastOffset;
             int length = extendMatch(data, pos, matchPos, min(MAX_LENGTH, (int)data.size() - pos));
 
-            if (length >= MIN_LENGTH) {
+            if (length >= MIN_LENGTH)
+			{
                 int cost = 1 + getEliasGammaBitLength(length);
                 matches.push_back(Match(-lastOffset, length, cost));
                 bestLength = length;
                 bestCost = cost;
 
-                if (length >= GOOD_LENGTH) {
+                if (length >= GOOD_LENGTH)
+				{
                     return matches; // Early exit for very good matches
                 }
             }
         }
 
         // Hash-based search with early termination
-        if ((size_t)(pos + 2) < data.size()) {
+        if ((size_t)(pos + 2) < data.size())
+		{
             uint32_t hash = ((uint32_t)data[pos] << 16) | ((uint32_t)data[pos + 1] << 8) | data[pos + 2];
             auto it = hashTable.find(hash);
 
-            if (it != hashTable.end()) {
+            if (it != hashTable.end())
+			{
                 int matchesFound = 0;
                 const int MAX_MATCHES_TO_CHECK = 16; // Limit matches checked
 
-                for (auto rit = it->second.rbegin(); rit != it->second.rend() && matchesFound < MAX_MATCHES_TO_CHECK; ++rit) {
+                for (auto rit = it->second.rbegin(); rit != it->second.rend() && matchesFound < MAX_MATCHES_TO_CHECK; ++rit)
+				{
                     int matchPos = *rit;
                     if (matchPos >= pos) continue;
 
@@ -150,19 +167,22 @@ private:
                     int minLength = max(3, bestLength - 8);
                     int length = extendMatch(data, pos, matchPos, min(MAX_LENGTH, (int)data.size() - pos), minLength);
 
-                    if (length >= minLength) {
+                    if (length >= minLength)
+					{
                         int offsetCost = getOffsetBitLength(offset);
                         int totalCost = 1 + getEliasGammaBitLength(length) + offsetCost;
 
                         // Only add if it's competitive
-                        if (totalCost < bestCost || (totalCost == bestCost && length > bestLength)) {
+                        if (totalCost < bestCost || (totalCost == bestCost && length > bestLength))
+						{
                             matches.push_back(Match(offset, length, totalCost));
                             bestLength = max(bestLength, length);
                             bestCost = min(bestCost, totalCost);
                             matchesFound++;
                         }
 
-                        if (length >= GOOD_LENGTH) {
+                        if (length >= GOOD_LENGTH)
+						{
                             break;
                         }
                     }
@@ -173,7 +193,8 @@ private:
         // Limited direct search for short offsets
         int directSearchLimit = min(min(256, maxLookback), bestLength > 0 ? bestLength + 16 : 256);
 
-        for (int offset = 1; offset <= directSearchLimit; offset++) {
+        for (int offset = 1; offset <= directSearchLimit; offset++)
+		{
             int matchPos = pos - offset;
 
             // Quick rejection
@@ -182,11 +203,13 @@ private:
             int minLength = max(MIN_LENGTH, bestLength - 4);
             int length = extendMatch(data, pos, matchPos, min(MAX_LENGTH, (int)data.size() - pos), minLength);
 
-            if (length >= minLength) {
+            if (length >= minLength)
+			{
                 int offsetCost = getOffsetBitLength(offset);
                 int totalCost = 1 + getEliasGammaBitLength(length) + offsetCost;
 
-                if (totalCost < bestCost || (totalCost == bestCost && length > bestLength)) {
+                if (totalCost < bestCost || (totalCost == bestCost && length > bestLength))
+				{
                     matches.push_back(Match(offset, length, totalCost));
                     bestLength = max(bestLength, length);
                     bestCost = min(bestCost, totalCost);
@@ -197,14 +220,16 @@ private:
         }
 
         // Sort matches by cost/length ratio for better parsing
-        sort(matches.begin(), matches.end(), [](const Match& a, const Match& b) {
+        sort(matches.begin(), matches.end(), [](const Match& a, const Match& b)
+			{
             double ratioA = (double)a.length / a.cost;
             double ratioB = (double)b.length / b.cost;
             return ratioA > ratioB;
             });
 
         // Keep only best matches to reduce DP complexity
-        if (matches.size() > 8) {
+        if (matches.size() > 8)
+		{
             matches.resize(8);
         }
 
@@ -224,7 +249,8 @@ private:
         buildHashTable(data);
 
         // Process with early pruning
-        for (int pos = 0; pos < n; pos++) {
+        for (int pos = 0; pos < n; pos++)
+		{
             if (dp[pos].cost == INT_MAX) continue;
 
             // Literal option
@@ -232,7 +258,8 @@ private:
             int literalCost = getLiteralCost(data, pos, literalRunStart);
             int totalLiteralCost = dp[pos].cost + literalCost;
 
-            if (totalLiteralCost < dp[pos + 1].cost) {
+            if (totalLiteralCost < dp[pos + 1].cost)
+			{
                 dp[pos + 1].cost = totalLiteralCost;
                 dp[pos + 1].lastOffset = dp[pos].lastOffset;
                 dp[pos + 1].literalRunStart = literalRunStart;
@@ -241,30 +268,40 @@ private:
             // Match options
             auto matches = findMatches(data, pos, dp[pos].lastOffset);
 
-            for (const Match& match : matches) {
+            for (const Match& match : matches)
+			{
                 int newPos = pos + match.length;
-                if (newPos > n) continue;
+                if (newPos > n)
+                {
+                    continue;
+                }
 
                 int totalCost = dp[pos].cost + match.cost;
 
-                if (totalCost < dp[newPos].cost) {
+                if (totalCost < dp[newPos].cost)
+				{
                     dp[newPos].cost = totalCost;
                     dp[newPos].literalRunStart = -1;
 
-                    if (match.offset < 0) {
+                    if (match.offset < 0)
+					{
                         dp[newPos].lastOffset = dp[pos].lastOffset;
                     }
-                    else {
+                    else
+					{
                         dp[newPos].lastOffset = match.offset;
                     }
                 }
             }
 
             // Skip ahead for very long matches to reduce iterations
-            if (!matches.empty() && matches[0].length > 1024) {
+            if (!matches.empty() && matches[0].length > 1024)
+			{
                 int skipTo = min(pos + matches[0].length / 4, n - 1);
-                for (int skip = pos + 1; skip < skipTo; skip++) {
-                    if (dp[skip].cost > dp[pos].cost + 100) { // Heuristic pruning
+                for (int skip = pos + 1; skip < skipTo; skip++)
+				{
+                    if (dp[skip].cost > dp[pos].cost + 100)
+					{ // Heuristic pruning
                         dp[skip].cost = INT_MAX;
                     }
                 }

@@ -21,7 +21,8 @@
 //bugfix to count color fragments correctly in case the last slot of a color space is used by the color - would result in a buggy output if a color was present in every block
 //making sure each color order is only processed once
 //adding hi-res graphics support
-//new -h switch to force hi-res mode if the bitmap otherwise would pass for multicolor (all pixels are double pixels)
+//new -h switch to force hi-res mode if the bitmap would qualify for both multicolor (all pixels are doubled) and hi-res (no more than two colors per char block)
+//if the -h switch is not used, then these images will be processed as multicolor
 
 #include "common.h"
 
@@ -603,7 +604,14 @@ void CreateBitmapData()
     //Rebuild the image
     //----------------------------------------------------------------------------
 
-    arrBMP.resize(((size_t)ColTabSize * 10) + 1);
+    if (!IsHires)
+    {
+        arrBMP.resize(((size_t)ColTabSize * 10) + 1);
+    }
+    else
+    {
+        arrBMP.resize(((size_t)ColTabSize * 9) + 1);
+    }
 
     unsigned char Col1{}, Col2{}, Col3{};
 
@@ -660,6 +668,14 @@ void CreateBitmapData()
                 }
             }
         }
+
+        for (size_t i = 0; i < (size_t)ColTabSize; i++)
+        {
+            arrBMP[(size_t)(8 * ColTabSize) + i] = ScrRAM[i];
+            arrBMP[(size_t)(9 * ColTabSize) + i] = ColR[i];
+        }
+
+        arrBMP[(size_t)(10 * ColTabSize)] = BGCol;
     }
     else
     {
@@ -713,15 +729,14 @@ void CreateBitmapData()
                 }
             }
         }
-    }
 
-    for (size_t i = 0; i < (size_t)ColTabSize; i++)
-    {
-        arrBMP[(size_t)(8 * ColTabSize) + i] = ScrRAM[i];
-        arrBMP[(size_t)(9 * ColTabSize) + i] = ColR[i];
-    }
+        for (size_t i = 0; i < (size_t)ColTabSize; i++)
+        {
+            arrBMP[(size_t)(8 * ColTabSize) + i] = ScrRAM[i];
+        }
 
-    arrBMP[(size_t)(10 * ColTabSize)] = BGCol;
+        arrBMP[(size_t)(9 * ColTabSize)] = BGCol;
+    }
     
     vecBMP.push_back(arrBMP);
 
@@ -3404,8 +3419,11 @@ bool OptimizeKoala()
                                 }
                                 else
                                 {
-                                    if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
+                                    if (BestNumFrag + BestNumFragCol < BestFrag + BestFragCol)  // && (BestNumFragCol < BestFragCol))
                                     {
+
+                                        ColorOrder.push_back(CurrentColorOrder);
+
                                         RenderImage(Layout);
 
                                         BestFrag = BestNumFrag;
@@ -3530,7 +3548,7 @@ bool OptimizeKoala()
                                     if (IsHires)
                                         Layout = 0;
 
-                                    if ((BestNumFrag + BestNumFragCol < BestFrag + BestFragCol))  // && (BestNumFragCol < BestFragCol))
+                                    if (BestNumFrag + BestNumFragCol < BestFrag + BestFragCol)  // && (BestNumFragCol < BestFragCol))
                                     {
 
                                         //ColorOrder.push_back(CurrentColorOrder);
@@ -3621,13 +3639,23 @@ bool OptimizeKoala()
         BMP[i] = vecBMP[IdxBest][i];
     }
 
-    for (size_t i = 0; i < (size_t)ColTabSize; i++)
+    if (!IsHires)
     {
-        ScrRAM[i] = vecBMP[IdxBest][i + (size_t)(8 * ColTabSize)];
-        ColR[i] = vecBMP[IdxBest][i + (size_t)(9 * ColTabSize)];
+        for (size_t i = 0; i < (size_t)ColTabSize; i++)
+        {
+            ScrRAM[i] = vecBMP[IdxBest][i + (size_t)(8 * ColTabSize)];
+            ColR[i] = vecBMP[IdxBest][i + (size_t)(9 * ColTabSize)];
+        }
+        BGCol = vecBMP[IdxBest][(size_t)(10 * ColTabSize)];
     }
-
-    BGCol = vecBMP[IdxBest][(size_t)(10 * ColTabSize)];
+    else
+    {
+        for (size_t i = 0; i < (size_t)ColTabSize; i++)
+        {
+            ScrRAM[i] = vecBMP[IdxBest][i + (size_t)(8 * ColTabSize)];
+        }
+        BGCol = vecBMP[IdxBest][(size_t)(9 * ColTabSize)];
+    }
 
     return RebuildImage(OutFile);
 }
@@ -4505,18 +4533,21 @@ void ShowHelp()
     cout << "File size: 9503 bytes. In most cases, this format compresses somewhat better than Koala but it also needs a more\n";
     cout << "complex display routine.\n\n";
     cout << "***KoalaX (.klx) format: similar to the Koala format, but replaces the first two address header bytes with 4 bytes\n";
-    cout << "describing the width (double pixels) and height of the bitmap in low/high order. Bitmap pixel data, screen RAM, color\n";
-    cout << "RAM, and background color are stored similar to the Koala format. Meant for handling non-standard image sizes.\n\n";
-    cout << "Usage\n";
+    cout << "describing the width (double pixels) and height of the bitmap in little-endian (low byte first) order. Bitmap pixel\n";
+    cout << "data, screen RAM, color RAM, and background color are stored similar to the Koala format. Meant for non-standard image\n";
+	cout << "sizes.\n\n";
+	cout << "Usage\n";
     cout << "-----\n\n";
-    cout << "spot input -o [output] -m [bitmap mode] -f [format] -b [bgcolor] -v -s\n\n";
+    cout << "spot input -o [output] -b [bgcolor] -f [format] -h -s -v\n\n";
     cout << "input:   An input image file to be optimized/converted. Only .png, .bmp, .kla, and .klx file types are accepted.\n\n";
+	cout << "The following command-line parameters are optional and their order is arbitrary:\n\n";
     cout << "-o       The output folder and file name. File extension (if exists) will be ignored. If omitted, SPOT will create\n";
     cout << "         a <spot/input> folder and the input file's name will be used as output file name.\n\n";
-    cout << "-h       Force hi-res mode. The default output bitmap mode is multicolor. SPOT will attempt to identify hi-res images,\n";
-    cout << "         but some may pass for both multicolor (double-pixel) and hi-res (no more than 2 colors per char block).\n";
-    cout << "         Use this switch if you want to force hi-res mode in such a case. If the image cannot be converted as hi-res\n";
-    cout << "         then SPOT will exit with an error message. This parameter is optional.\n\n";
+	cout << "-b       Output background color(s): 0123456789abcdef or x. SPOT will only create C64 files using the selected\n";
+	cout << "         background color(s). If x is used as value then only the first possible background color will be used,\n";
+	cout << "         all other possible background colors will be ignored. If this option is omitted, then SPOT will generate\n";
+	cout << "         output files using all possible background colors. If more than one background color is possible (and\n";
+	cout << "         allowed) then SPOT will append the background color to the output file name.\n\n";
     cout << "-f       Output file formats: kmscg2opb. Select as many as you want in any order:\n";
     cout << "         k - .kla (Koala - 10003 bytes)\n";
     cout << "         m - .map (bitmap data)\n";
@@ -4528,15 +4559,14 @@ void ShowHelp()
     cout << "         p - .png (portable network graphics)\n";
     cout << "         b - .bmp (bitmap)\n";
     cout << "         x - .klx (KoalaX)\n";
-    cout << "         This parameter is optional. If omitted, then a Koala file will be created by default.\n\n";
-    cout << "-b       Output background color(s): 0123456789abcdef or x. SPOT will only create C64 files using the selected\n";
-    cout << "         background color(s). If x is used as value then only the first possible background color will be used,\n";
-    cout << "         all other possible background colors will be ignored. If this option is omitted, then SPOT will generate\n";
-    cout << "         output files using all possible background colors. If more than one background color is possible (and\n";
-    cout << "         allowed) then SPOT will append the background color to the output file name.\n\n";
-    cout << "-v       Verbose mode.\n\n";
-    cout << "-s       Simple/speedy mode. Skips compression cost calculation and selects the best candidate based on predictors.\n";
-    cout << "         This mode can be helpful in the case of huge, non-standard images where standard mode could be extremely slow.\n\n";
+    cout << "         If this parameter is omitted, then a Koala file will be created by default.\n\n";
+	cout << "-h       Force hi-res mode. The default output bitmap mode is multicolor. SPOT will attempt to identify hi-res images,\n";
+	cout << "         but some may pass for both multicolor (double-pixel) and hi-res (no more than 2 colors per char block).\n";
+	cout << "         Use this switch if you want to force hi-res mode in such a case. If the image cannot be converted as hi-res\n";
+	cout << "         then SPOT will exit with an error message.\n\n";
+	cout << "-s       Simple/speedy mode. Skips compression cost calculation and selects the best candidate based on predictors.\n";
+	cout << "         This mode can be helpful in the case of huge, non-standard images where standard mode could be extremely slow.\n\n";
+	cout << "-v       Verbose mode.\n\n";
     cout << "Examples\n";
     cout << "--------\n\n";
     cout << "spot picture.bmp -o newfolder/newfile -f msc -b 0\n";
@@ -4577,7 +4607,7 @@ int main(int argc, char* argv[])
 #ifdef DEBUG
         InFile = "c:/spot/Hires/gp.png";
         OutFile = "c:/spot/Hires/gp";
-        CmdOptions = "mspb";
+        CmdOptions = "mscg";
         CmdColors = "x";
         ForceHiresMode = true;
         VerboseMode = true;
@@ -4585,11 +4615,11 @@ int main(int argc, char* argv[])
 #else
         cout << "Usage: spot input [options]\n";
         cout << "options:    -o [output path and filename without extension]\n";
-        cout << "            -h (force hi-res mode)\n";
-        cout << "            -f [output format(s)]\n";
-        cout << "            -b [background color(s)]\n";
-        cout << "            -v (verbose mode)\n";
-        cout << "            -s (simple/speedy mode)\n";
+		cout << "            -b [background color(s)]\n";
+		cout << "            -f [output format(s)]\n";
+		cout << "            -h (force hi-res mode)\n";
+		cout << "            -s (simple/speedy mode)\n";
+		cout << "            -v (verbose mode)\n";
         cout << "\n";
         cout << "Help:  spot -help\n";
         cout << "\n";
